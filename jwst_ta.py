@@ -63,25 +63,66 @@ def checkbox(data, box):
             
     
     
-    plt.figure()
-    plt.imshow(chbox, origin='lower', aspect='equal', cmap='gist_heat')
-    plt.plot(iy, ix, marker='x', mew=2., ms = 10.)
-    plt.title('Checkbox image with coarse centroid')
-    plt.show()
-    
-    print 'Coarse centroid found at ({0}, {1})'.format(ix, iy)
+    #plt.figure()
+    #plt.imshow(chbox, origin='lower', aspect='equal', cmap='gist_heat', interpolation='None')
+    #plt.plot(iy, ix, marker='x', mew=2., ms = 10.)
+    #plt.title('Checkbox image with coarse centroid')
+    #plt.show()
     
     
-   
-   
-   
     return ix, iy
     
     
 
 #=====================================================
+def fine_centroid(data, cwin, xc, yc):
+    
+    sumx = 0.
+    sumy = 0.
+    sump = 0.
+    
+    # define rwin, half the cwin setting
+    rwin = np.floor(cwin/2.)
+    
+    # remember to add 1 so we get all cwin pixels
+    x = (xc - np.floor(cwin/2.)) + np.arange(cwin)
+    y = (yc - np.floor(cwin/2.)) + np.arange(cwin) 
+    #pdb.set_trace()
+    
+    # write weights out to an array - for testing
+    #wtarr = np.zeros_like(data)
+    
+    for i in x:
+        for j in y:
+            wx = rclip(rwin-abs(i-xc)+0.5, 0.0, 1.0)
+            wy = rclip(rwin-abs(j-yc)+0.5, 0.0, 1.0)
+            ww = wx*wy
+            # for testing - delete once tested
+            #wtarr[i,j] = ww
+            
+            sumx += ww * data[int(i),int(j)] * i
+            sumy += ww * data[int(i),int(j)] * j
+            sump += ww * data[int(i),int(j)]
+    
+    
+    # plot of pixel weights, for testing
+    #plt.figure()
+    #plt.imshow(wtarr[xc-5:xc+5, yc-5:yc+5], origin='lower', aspect='equal', interpolation='None')
+    #plt.colorbar()
+    #plt.show()
+    # end test plot
+    
+    xc_old = xc
+    yc_old = yc
+    
+    xc = sumx/sump
+    yc = sumy/sump
+    
+    
 
-def centroid(infile=None, ext=0, cbox=5, cwin=6, incoord=(0., 0.), roi=None, bgcorr=-1, out=None):
+    return xc, yc
+#=====================================================
+def centroid(infile=None, ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, out=None):
     
     '''
     Implementation of the JWST GENTALOCATE algorithm. Parameters key:
@@ -115,26 +156,36 @@ def centroid(infile=None, ext=0, cbox=5, cwin=6, incoord=(0., 0.), roi=None, bgc
     print 'Input coordinates = ({0}, {1})'.format(xin, yin)
     
     # consider first the simple case where the image is 2-D and we perform just 1 iteration, and no background subtraction
-    if (roi != None):
+    if (roi != 'None'):
         # first check that the ROI is a sensible number. if it's bigger than the size of the array, use the full array instead
         if (roi >= n[0])|(roi >= n[1]):
             print 'ROI size is bigger than the image; using full image instead'
             xc, yc = checkbox(im, cbox)
-            print xc, yc
         else:
-            print np.round(xin-(roi/2.))
             xc, yc = checkbox(im[np.round(xin-(roi/2.)):np.round(xin+(roi/2.)), np.round(yin-(roi/2.)):np.round(yin+(roi/2.))], cbox)
             xc += np.round(xin-(roi/2.))
             yc += np.round(yin-(roi/2.))
-            print xc, yc
     else:
         xc, yc = checkbox(im, cbox)
-        print xc, yc
-            
-            
+    
+    print 'Coarse centroid found at ({0}, {1})'.format(xc, yc)
     
     
-    return 0
+    xf, yf = fine_centroid(im, cwin, xc, yc)
+    
+    err = np.sqrt((xf-xin)**2 + (yf-yin)**2)
+    print 'Fine centroid found at ({0:.4f}, {1:.4f}). Rms error = {2:.4f}'.format(xf, yf, err)
+    
+    
+    iter_thresh = 0.1
+    nconv = 0
+    
+    if (abs(xf-xc) <= iter_thresh) & (abs(yf-yc) <= iter_thresh):
+        nconv = 1
+        
+        
+    
+    return xf, yf
     
 #=====================================================
 
