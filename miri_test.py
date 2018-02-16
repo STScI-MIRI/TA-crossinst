@@ -18,12 +18,13 @@ cdir= os.getcwd()
 os.chdir('../TA_sims/TA_ims/')
 files = glob.glob('*.fits')
 
-for file in files:
+
+for file in files[:1]:
     print file
     h = fits.getheader(file)
     xin = h['X000']
     yin = h['Y000']
-    x,y = centroid(infile=file, cbox=5, incoord=(xin, yin), roi=64., bgcorr=-1, out=None)
+    x,y = centroid(infile=file, cbox=5, incoord=(xin, yin), roi=64., bgcorr=100, out=0.)
 
 os.chdir(cdir)
   

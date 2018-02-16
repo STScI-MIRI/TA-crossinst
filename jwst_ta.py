@@ -19,17 +19,18 @@ def rclip(x, xmin, xmax):
 
 
 #=====================================================
-def checkbox(data, box):
+def checkbox(idata, box, bgcorr):
     
     ''' 
     This function performs the coarse centroiding on the data array provided.
     
     - data:         a 2D array
     - box:          the size over which each element of the checkbox image will be computed. has to be smaller than the size of data
+    - bgcorr:       inherit the background correction parameter so can apply here.
     
     '''
     
-    print 'performing coarse centroiding on an array of size {0}'.format(np.shape(data))
+    print 'performing coarse centroiding on an array of size {0}'.format(np.shape(idata))
     
     
     hbox = np.int(np.floor(box/2.))
@@ -38,9 +39,16 @@ def checkbox(data, box):
     ix = 0.
     iy = 0.
     
-    x = hbox + np.arange(np.size(data, axis=0)-box)
-    y = hbox + np.arange(np.size(data, axis=1)-box)
+    x = hbox + np.arange(np.size(idata, axis=0)-box)
+    y = hbox + np.arange(np.size(idata, axis=1)-box)
     #print np.min(x), np.max(x), np.min(y), np.max(y)
+    
+    # do background correction first
+    if bgcorr > 0.:
+        data = bgrsub(idata, bgcorr)
+    else:
+        data = np.copy(idata)
+        
     
     
     if (box == 1.):
@@ -122,6 +130,46 @@ def fine_centroid(data, cwin, xc, yc):
 
     return xc, yc
 #=====================================================
+def bgrsub(data, val):
+    
+    '''
+    Does the background correction step, if needed. Method is determined from the val parameter:
+    
+    - val <= 0:     no background subtraction (shouldn't come to this function, but let's check anyway)
+    - 0 < val < 1:  fractional background. sorts all pixels and subtracts the value of this percentile
+    - val > 1:      this value is subtracted uniformly from all pixels
+    
+    '''
+    
+    # outdata = np.zeros_like(data)
+    
+    
+    
+    if (val <= 0.):
+        print 'No background subtracted'
+        outdata = data
+    elif (val > 0.) & (val < 1.):
+        
+        # test plotting code - cumulative distributio function of the pixels in data
+        plt.figure()
+        plt.hist(np.ravel(data), bins=75, normed='True', cumulative='True', lw = 1.5, histtype='step')
+        plt.axhline(val, xmin=0., xmax=100., color='r', lw = 1.5)
+        plt.show()
+        # end
+        
+        bgrval = np.percentile(data, val*100.)
+        outdata = data - bgrval
+        print 'subtracting {0} from image'.format(bgrval)
+        
+        
+    else:
+        outdata = data - val
+    
+    return outdata
+    
+    
+#=====================================================
+
 def centroid(infile=None, ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, out=None):
     
     '''
@@ -130,7 +178,7 @@ def centroid(infile=None, ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgc
     - infile:       FITS filename
     - ext:          extension number of the FITS file containing the science data (default = 0)
     - checkbox:     the FULL size of the checkbox, in pixels, for coarse centroiding (default = 5)
-    - cwin:         the FULL size of the centroid window, in pixels, for fine centroiding (default = 6)
+    - cwin:         the FULL size of the centroid window, in pixels, for fine centroiding (default = 5)
     - incoord:      (x,y) input coordinates of the source position
     - roi:          size of a region of interest to be used for the centroiding (optional). If not set, full image will be used for coarse centroiding
                         * setting an ROI also requires input coordinates
@@ -160,13 +208,13 @@ def centroid(infile=None, ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgc
         # first check that the ROI is a sensible number. if it's bigger than the size of the array, use the full array instead
         if (roi >= n[0])|(roi >= n[1]):
             print 'ROI size is bigger than the image; using full image instead'
-            xc, yc = checkbox(im, cbox)
+            xc, yc = checkbox(im, cbox, bgcorr)
         else:
-            xc, yc = checkbox(im[np.round(xin-(roi/2.)):np.round(xin+(roi/2.)), np.round(yin-(roi/2.)):np.round(yin+(roi/2.))], cbox)
+            xc, yc = checkbox(im[np.round(xin-(roi/2.)):np.round(xin+(roi/2.)), np.round(yin-(roi/2.)):np.round(yin+(roi/2.))], cbox, bgcorr)
             xc += np.round(xin-(roi/2.))
             yc += np.round(yin-(roi/2.))
     else:
-        xc, yc = checkbox(im, cbox)
+        xc, yc = checkbox(im, cbox, bgcorr)
     
     print 'Coarse centroid found at ({0}, {1})'.format(xc, yc)
     
