@@ -237,7 +237,224 @@ def centroid(infile=None, ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgc
     
 #=====================================================
 
+def make_ta_image(infile, ext=0, useframes=3):
+    """
+    Create the image on which to perform the centroiding
+    given a fits file containing an exposure with 
+    multiple groups. In the case of multiple integrations
+    in the exposure, use only the first, and produce a 
+    single TA image.
 
+    Parameters:
+    -----------
+    infile -- Name of FITS file containing exposure. Must be
+              an exposure containing at least one integration
+              and the integration must have an odd number of groups
+    ext -- Extension number containing the data.
+           (Change to use 'SCI' rather than number?)
+    useframes -- Number of frames to use for the calculation.
+                 Most of the time 3 frames are used, these 
+                 being the 1st, (N+1)/2, and Nth groups
+                 of the integration. 
+
+                 There are, apparently, ways to do the calculation
+                 with larger numbers of groups, but I haven't 
+                 seen the math for those yet.
+
+    Returns:
+    --------
+    2D numpy ndarray of the TA image
+    """
+
+    # Read in data
+    with fits.open(infile) as h:
+        data = h[ext].data
+
+    shape = data.shape
+    if len(shape) <= 2:
+        print("Warning: Input target acq exposure must have multiple groups!")
+        sys.exit()
+    elif len(shape) == 4:
+        # If there are multiple integrations, use only the first
+        data = data[0, :, :, :]
+        
+    ngroups = shape[-3]
+    if ngroups % 2 == 0:
+        print("Warning: Input target acq exposure must have an odd number of groups!")
+        sys.exit()
+
+    # Group numbers to use. Adjust the values to account for
+    # python being 0-indexed
+    if useframes == 3:
+        frames = [0, (ngroups-1)/2, ngroups-1]
+        diff21 = data[frames[1], :, :] - data[frames[0], :, :]
+        diff32 = data[frames[2], :, :] - data[frames[1], :, :]
+        ta_img = np.minimum(diff21, diffim32)
+    elif useframes == 5:
+        something
+
+    return ta_img
+
+
+#=====================================================
+def apply_flat_field(image, flat):
+    """
+    Apply flat field to TA image. Assume the flat 
+    has the format matching those to be used on 
+    board by GENTALOCATE. Pixel values are multiplied
+    by 1000 relative to traditional flat field files.
+    (i.e. flat is normalized to a value of 1000).
+    Bad pixels have a value of 65535. Bad pixels
+    receive a value that is interpolated from 
+    nearest neighbors.
+
+    Parameters:
+    -----------
+    image -- TA image. 2D ndarray
+    flat -- Flat field image. 2D ndarray.
+    
+    Returns:
+    --------
+    Flat fielded image -- 2D ndarray
+    """
+
+    # Find bad pixels and set to NaN
+    bad = flat == 65535
+    flat[bad] = np.nan
+    
+    # Apply flat
+    image /= (flat/1000.)
+    
+    # Use surrounding pixels to set bad pixel values
+    # NOT SURE IF THIS IS IMPLEMENTED IN THE REAL
+    # GENTALOCATE OR NOT...
+    if np.any(bad):
+        image = fixbadpix(image, bad)
+
+    return image
+
+
+
+#======================================================
+def fixbadpix(data, maxstampwidth=3, method='median'):
+    """
+    Replace the values of bad pixels in the TA image
+    with interpolated values from neighboring good
+    pixels. Bad pixels are identified as those with a
+    value of 65535 in the flat field file
+
+    Parameters:
+    -----------
+    data -- 2D array containing the TA image
+    bpix -- Tuple of lists of bad pixel coordinates. 
+            (output from np.where on the 2D flat field image)
+    maxstampwidth -- Maximum width of area centered on a bad pixel
+                     to use when calculating median to fix the bad 
+                     pixel. Must be an odd integer.
+    method -- The bad pixel is fixed by taking the median or the 
+              mean of the surrounding pixels. This is a string
+              that can be either 'median' or 'mean'.
+
+    Returns:
+    --------
+    2D image with fixed bad pixels
+    """
+    ny, nx = data.shape
+
+    if method == "median":
+        mmethod = np.nanmedian
+    elif method == "mean":
+        mmethod = np.nanmean
+    else:
+        print("Invalid method. Must be either 'median' or 'mean'.")
+        sys.exit()
+    
+    if (maxstampwidth % 2) == 0:
+        print("maxstampwidth must be odd. Adding one to input value.")
+        maxstampwidth += 1 
+
+    half = np.int((maxstampwidth - 1)/2)
+
+    bad = np.where(data == np.isnan)
+    for bady, badx in zip(bad[0], bad[1]):
+        substamp = np.zeros((maxstampwidth, maxstampwidth))
+        substamp[:,:] = np.nan
+        minx = badx - half
+        maxx = badx + half + 1
+        miny = bady - half
+        maxy = bady + half + 1
+
+        # Offset between data coordinates and stamp
+        # coordinates
+        dx = copy(minx)
+        dy = copy(miny)
+        
+        if minx < 0:
+            sminx = -minx
+            minx = 0
+
+        if miny < 0:
+            sminy = -miny
+            miny = 0
+
+        if maxx > nx:
+            smaxx = maxstampwidth - (maxx - nx)
+            maxx = nx
+
+        if maxy > ny:
+            smaxy = maxstampwidth - (maxy - ny)
+            maxy = ny
+            
+        substamp[sminy:smaxy, sminx:smaxx] = data[miny:maxy, minx:maxx]
+
+        # First try the mean of only the 4 adjacent pixels
+        neighborsx = [half, half+1, half, half-1]
+        neighborsy = [half+1, half, half-1, half]
+        if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 4:
+            data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
+            continue
+
+        # If the adjacent pixels are all NaN, expand to include corners
+        else:
+            neighborsx.append([half-1, half+1, half+1, half-1])
+            neighborsy.append([half+1, half+1, half-1, half-1])
+            if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 8:
+                data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
+                continue
+
+        # If all pixels are still NaN, iteratviely expand to include
+        # more rings of pixels until the entire stamp image is used
+        # (This step not included in Goudfrooij's original bad pixel
+        # correction script).
+        delta = 2
+        while delta <= half:
+            newy = np.arange(half-(delta-1), half+delta)
+            newx = np.repeat(half - delta, len(newy))
+            neighborsx.extend(newx)
+            neighborsy.extend(newy)
+            newx = np.repeat(half + delta, len(newy))
+            neighborsx.extend(newx)
+            neighborsy.extend(newy)
+            newx = np.arange(half-delta, half+delta+1)
+            newy = np.repeat(half - delta, len(newx))
+            neighborsx.extend(newx)
+            neighborsy.extend(newy)
+            newy = np.repeat(half + delta, len(newx))
+            neighborsx.extend(newx)
+            neighborsy.extend(newy)
+            if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < (len(neighbosrsx)):
+                data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
+                continue
+            else:
+                delta += 1
+        print(("Warning: all pixels within {} rows/cols of the bad pixel at ({},{}) "
+               "are also bad. Cannot correct this bad pixel with this stamp image"
+               "size.".format(delta, badx, bady)))
+
+    return data
+
+        
+#====================================================== 
     
     
     
