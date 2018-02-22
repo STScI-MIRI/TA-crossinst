@@ -1,12 +1,12 @@
+#! /usr/bin/env python
+
+import os
+from copy import copy
 import numpy as np
 import astropy.io.fits as fits
 import astropy.io.ascii as ascii
 import matplotlib.pyplot as plt
 import pdb
-
-
-
-
 
 def rclip(x, xmin, xmax):
     dum = x
@@ -19,7 +19,7 @@ def rclip(x, xmin, xmax):
 
 
 #=====================================================
-def checkbox(idata, box, bgcorr):
+def checkbox(data, box, bgcorr):
     
     ''' 
     This function performs the coarse centroiding on the data array provided.
@@ -30,7 +30,7 @@ def checkbox(idata, box, bgcorr):
     
     '''
     
-    print 'performing coarse centroiding on an array of size {0}'.format(np.shape(idata))
+    print('performing coarse centroiding on an array of size {0}'.format(np.shape(data)))
     
     
     hbox = np.int(np.floor(box/2.))
@@ -39,37 +39,23 @@ def checkbox(idata, box, bgcorr):
     ix = 0.
     iy = 0.
     
-    x = hbox + np.arange(np.size(idata, axis=0)-box)
-    y = hbox + np.arange(np.size(idata, axis=1)-box)
-    #print np.min(x), np.max(x), np.min(y), np.max(y)
-    
-    # do background correction first
-    if bgcorr > 0.:
-        data = bgrsub(idata, bgcorr)
-    else:
-        data = np.copy(idata)
-        
-    
-    
+    x = hbox + np.arange(np.size(data, axis=1)-box)
+    y = hbox + np.arange(np.size(data, axis=0)-box)
     if (box == 1.):
         chbox = np.copy(data)
         maxpx = np.argmax(chbox)
-        ix, iy = np.unravel_index(maxpx, np.shape(data))
-        
-    
+        ix, iy = np.unravel_index(maxpx, np.shape(data))    
     else:
         chbox = np.zeros_like(data)
         for i in x:
             for j in y:
                 # remember to add 1 so python sums all 5 pixels
-                psumu = np.sum(data[int(i)-hbox:int(i)+hbox+1, int(j)-hbox:int(j)+hbox+1])
-                chbox[i,j] = psumu
+                psumu = np.sum(data[int(j)-hbox:int(j)+hbox+1, int(i)-hbox:int(i)+hbox+1])
+                chbox[j,i] = psumu
                 if (psumu > psum):
                     ix = i
                     iy = j
                     psum = psumu
-            
-    
     
     #plt.figure()
     #plt.imshow(chbox, origin='lower', aspect='equal', cmap='gist_heat', interpolation='None')
@@ -108,9 +94,9 @@ def fine_centroid(data, cwin, xc, yc):
             # for testing - delete once tested
             #wtarr[i,j] = ww
             
-            sumx += ww * data[int(i),int(j)] * i
-            sumy += ww * data[int(i),int(j)] * j
-            sump += ww * data[int(i),int(j)]
+            sumx += ww * data[int(j),int(i)] * i
+            sumy += ww * data[int(j),int(i)] * j
+            sump += ww * data[int(j),int(i)]
     
     
     # plot of pixel weights, for testing
@@ -141,27 +127,33 @@ def bgrsub(data, val):
     
     '''
     
-    # outdata = np.zeros_like(data)
-    
-    
-    
     if (val <= 0.):
-        print 'No background subtracted'
+        print('No background subtracted')
         outdata = data
     elif (val > 0.) & (val < 1.):
         
-        # test plotting code - cumulative distributio function of the pixels in data
-        plt.figure()
-        plt.hist(np.ravel(data), bins=75, normed='True', cumulative='True', lw = 1.5, histtype='step')
-        plt.axhline(val, xmin=0., xmax=100., color='r', lw = 1.5)
-        plt.show()
-        # end
+        # test plotting code - cumulative distribution function of the pixels in data
         
         bgrval = np.percentile(data, val*100.)
+
+        # Histogram of signal values
+        plt.figure()
+        bins = np.arange(-100,1000,50)
+        bins2 = np.linspace(1000,np.max(data),5)
+        bins = np.concatenate([bins,bins2])
+        plt.hist(np.ravel(data), bins=bins, lw = 1.5, histtype='step', cumulative=True, normed=True)
+        plt.axvline(bgrval, ymin=0., ymax=1., color='r',
+                    lw = 1.5, label='Background Level')
+        plt.xlim(np.min(data), np.min(data) + np.abs(bgrval)*4)
+        plt.xlabel("Signal (ADU)")
+        plt.ylabel("Cumulative Fraction of Pixels")
+        plt.legend(loc='lower right')
+        plt.show()
+
+        # Subtract background level
         outdata = data - bgrval
-        print 'subtracting {0} from image'.format(bgrval)
-        
-        
+        print('subtracting {0} from image'.format(bgrval))
+
     else:
         outdata = data - val
     
@@ -170,12 +162,16 @@ def bgrsub(data, val):
     
 #=====================================================
 
-def centroid(infile=None, ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, out=None):
+def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None):
     
     '''
     Implementation of the JWST GENTALOCATE algorithm. Parameters key:
     
     - infile:       FITS filename
+    - input_type:   description of input data: 'image' or 'ramp'. If 'ramp'
+                    then make_ta_image functin is run. If 'image' (default)
+                    centroiding is performed directly on the data in the
+                    input file
     - ext:          extension number of the FITS file containing the science data (default = 0)
     - checkbox:     the FULL size of the checkbox, in pixels, for coarse centroiding (default = 5)
     - cwin:         the FULL size of the centroid window, in pixels, for fine centroiding (default = 5)
@@ -188,11 +184,41 @@ def centroid(infile=None, ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgc
                         * bgcorr > 1 for constant background subtraction number (this number will be subtracted from the entire image)
     - out:          enter a filename for output of the fit results to a file (default = None)
     '''
-    
-    hdu = fits.open(infile)
-    im = hdu[ext].data
-    h = hdu[ext].header
-    
+
+    # Read in data. Create the TA image if requested
+    if input_type.lower() == 'image':
+        hdu = fits.open(infile)
+        im = hdu[ext].data
+        h = hdu[ext].header
+    elif input_type.lower() == 'ramp':
+        im = make_ta_image(infile, ext=ext, useframes=3)
+        # Save TA image for code testing
+        h0 = fits.PrimaryHDU(im)
+        hl = fits.HDUList([h0])
+        indir, inf = os.path.split(infile)
+        tafile = os.path.join(indir, 'TA_img_for_'+inf)
+        hl.writeto(tafile, overwrite=True)
+
+    # Do background correction first
+    if bgcorr > 0.:
+        im = bgrsub(im, bgcorr)
+
+    # Apply flat field
+    if flat is not None:
+        # Read in flat
+        with fits.open(flat) as ff:
+            flatfield = ff[flatext].data
+            
+        # Flat must be the same size as the data
+        ffshape = flatfield.shape
+        dshape = im.shape
+        if dshape != ffshape:
+            raise RunTimeError(("WARNING: flat field shape ({}) does "
+                                "not match data shape ({})!"
+                                .format(ffshape,dshape)))
+        # Apply flat
+        im = apply_flat_field(im, flatfield)
+        
     ndim = np.ndim(im)
     #pdb.set_trace()
     
@@ -201,38 +227,54 @@ def centroid(infile=None, ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgc
     # NOTE: in python the x-coord is axis 1, y-coord is axis 0
     xin = incoord[1]
     yin = incoord[0]
-    print 'Input coordinates = ({0}, {1})'.format(xin, yin)
+    print('Input coordinates = ({0}, {1})'.format(xin, yin))
     
-    # consider first the simple case where the image is 2-D and we perform just 1 iteration, and no background subtraction
-    if (roi != 'None'):
-        # first check that the ROI is a sensible number. if it's bigger than the size of the array, use the full array instead
+    # Extract the ROI
+    if (roi is not None):
+        # first check that the ROI is a sensible number.
+        # if it's bigger than the size of the array, use the
+        # full array instead
         if (roi >= n[0])|(roi >= n[1]):
-            print 'ROI size is bigger than the image; using full image instead'
-            xc, yc = checkbox(im, cbox, bgcorr)
+            print('ROI size is bigger than the image; using full image instead')
+            roi_im = im
+            xoffset = 0
+            yoffset = 0
+            #xc, yc = checkbox(im, cbox, bgcorr)
         else:
-            xc, yc = checkbox(im[np.round(xin-(roi/2.)):np.round(xin+(roi/2.)), np.round(yin-(roi/2.)):np.round(yin+(roi/2.))], cbox, bgcorr)
-            xc += np.round(xin-(roi/2.))
-            yc += np.round(yin-(roi/2.))
+            roi_im = im[np.round(yin-(roi/2.)):np.round(yin+(roi/2.)+1),
+                        np.round(xin-(roi/2.)):np.round(xin+(roi/2.))]
+            #xc, yc = checkbox(im[np.round(yin-(roi/2.)):np.round(yin+(roi/2.)+1), np.round(xin-(roi/2.)):np.round(xin+(roi/2.))], cbox, bgcorr)
+            #xc += np.round(xin-(roi/2.))
+            #yc += np.round(yin-(roi/2.))
+            xoffset = np.round(xin-(roi/2.))
+            yoffset = np.round(yin-(roi/2.))
     else:
-        xc, yc = checkbox(im, cbox, bgcorr)
-    
-    print 'Coarse centroid found at ({0}, {1})'.format(xc, yc)
-    
-    
-    xf, yf = fine_centroid(im, cwin, xc, yc)
-    
-    err = np.sqrt((xf-xin)**2 + (yf-yin)**2)
-    print 'Fine centroid found at ({0:.4f}, {1:.4f}). Rms error = {2:.4f}'.format(xf, yf, err)
-    
-    
+        #xc, yc = checkbox(im, cbox, bgcorr)
+        roi_im = im
+        xoffset = 0
+        yoffset = 0
+
+    # Perform coarse centroiding. Pay attention to coordinate
+    # offsets
+    xc, yc = checkbox(roi_im, cbox, bgcorr)
+    xc += xoffset
+    yc += yoffset
+    print('Coarse centroid found at ({0}, {1})'.format(xc, yc))
+
+    # Iterate fine centroiding
     iter_thresh = 0.1
     nconv = 0
+    while nconv == 0:
+        xf, yf = fine_centroid(im, cwin, xc, yc)
+        err = np.sqrt((xf-xin)**2 + (yf-yin)**2)
+        print(("Fine centroid found at (x, y) = ({0:.4f}, {1:.4f}). "
+               "Rms error = {2:.4f}".format(xf, yf, err)))
+        if (abs(xf-xc) <= iter_thresh) & (abs(yf-yc) <= iter_thresh):
+            nconv = 1
+        xc = xf
+        yc = yf
     
-    if (abs(xf-xc) <= iter_thresh) & (abs(yf-yc) <= iter_thresh):
-        nconv = 1
-        
-        
-    
+
     return xf, yf
     
 #=====================================================
@@ -266,32 +308,33 @@ def make_ta_image(infile, ext=0, useframes=3):
     2D numpy ndarray of the TA image
     """
 
-    # Read in data
+    # Read in data. Convert to floats
     with fits.open(infile) as h:
         data = h[ext].data
-
+    data = data * 1.
+        
     shape = data.shape
     if len(shape) <= 2:
-        print("Warning: Input target acq exposure must have multiple groups!")
-        sys.exit()
+        raise RunTimeError(("Warning: Input target acq exposure must "
+                            "have multiple groups!"))
     elif len(shape) == 4:
         # If there are multiple integrations, use only the first
         data = data[0, :, :, :]
         
     ngroups = shape[-3]
     if ngroups % 2 == 0:
-        print("Warning: Input target acq exposure must have an odd number of groups!")
-        sys.exit()
+        raise RunTimeError(("Warning: Input target acq exposure "
+                            "must have an odd number of groups!"))
 
     # Group numbers to use. Adjust the values to account for
     # python being 0-indexed
     if useframes == 3:
-        frames = [0, (ngroups-1)/2, ngroups-1]
+        frames = [0, np.int((ngroups-1)/2), ngroups-1]
         diff21 = data[frames[1], :, :] - data[frames[0], :, :]
         diff32 = data[frames[2], :, :] - data[frames[1], :, :]
-        ta_img = np.minimum(diff21, diffim32)
+        ta_img = np.minimum(diff21, diff32)
     elif useframes == 5:
-        something
+        something_else
 
     return ta_img
 
@@ -317,19 +360,22 @@ def apply_flat_field(image, flat):
     --------
     Flat fielded image -- 2D ndarray
     """
-
+    # Make sure flat field values are floats
+    flat = flat * 1.
+    
     # Find bad pixels and set to NaN
     bad = flat == 65535
+    print("Found {} bad pixels in the flat.".format(np.sum(bad)))
     flat[bad] = np.nan
     
     # Apply flat
     image /= (flat/1000.)
-    
+
     # Use surrounding pixels to set bad pixel values
     # NOT SURE IF THIS IS IMPLEMENTED IN THE REAL
     # GENTALOCATE OR NOT...
     if np.any(bad):
-        image = fixbadpix(image, bad)
+        image = fixbadpix(image)
 
     return image
 
@@ -361,6 +407,7 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
     """
     ny, nx = data.shape
 
+    # Set up the requested calculation method
     if method == "median":
         mmethod = np.nanmedian
     elif method == "mean":
@@ -375,8 +422,13 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
 
     half = np.int((maxstampwidth - 1)/2)
 
-    bad = np.where(data == np.isnan)
+    bpix = np.isnan(data)
+    bad = np.where(bpix)
+    # Loop over the bad pixels and correct
     for bady, badx in zip(bad[0], bad[1]):
+
+        print('Bad pixel:',bady,badx)
+        
         substamp = np.zeros((maxstampwidth, maxstampwidth))
         substamp[:,:] = np.nan
         minx = badx - half
@@ -388,19 +440,22 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
         # coordinates
         dx = copy(minx)
         dy = copy(miny)
-        
+
+        # Check for stamps that fall off the edges
+        # of the data array
+        sminx = 0
+        sminy = 0
+        smaxx = maxstampwidth
+        smaxy = maxstampwidth
         if minx < 0:
-            sminx = -minx
+            sminx = 0 - minx
             minx = 0
-
         if miny < 0:
-            sminy = -miny
+            sminy = 0 - miny
             miny = 0
-
         if maxx > nx:
             smaxx = maxstampwidth - (maxx - nx)
             maxx = nx
-
         if maxy > ny:
             smaxy = maxstampwidth - (maxy - ny)
             maxy = ny
@@ -412,6 +467,8 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
         neighborsy = [half+1, half, half-1, half]
         if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 4:
             data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
+            print(("Good pixels within nearest 4 neighbors. Mean: {}"
+                   .format(mmethod(substamp[neighborsx, neighborsy]))))
             continue
 
         # If the adjacent pixels are all NaN, expand to include corners
@@ -420,6 +477,8 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
             neighborsy.append([half+1, half+1, half-1, half-1])
             if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 8:
                 data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
+                print(("Good pixels within 8 nearest neighbors. Mean: {}"
+                       .format(mmethod(substamp[neighborsx, neighborsy]))))
                 continue
 
         # If all pixels are still NaN, iteratviely expand to include
@@ -444,6 +503,7 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
             neighborsy.extend(newy)
             if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < (len(neighbosrsx)):
                 data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
+                print("Expanding to {} rows".format(delta))
                 continue
             else:
                 delta += 1
