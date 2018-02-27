@@ -22,8 +22,8 @@ Status (Feb 27th 2018):
     
 
 Contributors:
-Bryan Hilbert
-Sarah Kendrew
+- Bryan Hilbert
+- Sarah Kendrew
 
 Comments welcome!
 
