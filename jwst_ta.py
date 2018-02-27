@@ -19,7 +19,7 @@ def rclip(x, xmin, xmax):
 
 
 #=====================================================
-def checkbox(data, box, bgcorr):
+def checkbox(data, box):
     
     ''' 
     This function performs the coarse centroiding on the data array provided.
@@ -256,7 +256,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
 
     # Perform coarse centroiding. Pay attention to coordinate
     # offsets
-    xc, yc = checkbox(roi_im, cbox, bgcorr)
+    xc, yc = checkbox(roi_im, cbox)
     xc += xoffset
     yc += yoffset
     print('Coarse centroid found at ({0}, {1})'.format(xc, yc))
@@ -315,7 +315,7 @@ def make_ta_image(infile, ext=0, useframes=3):
         
     shape = data.shape
     if len(shape) <= 2:
-        raise RunTimeError(("Warning: Input target acq exposure must "
+        raise RuntimeError(("Warning: Input target acq exposure must "
                             "have multiple groups!"))
     elif len(shape) == 4:
         # If there are multiple integrations, use only the first
@@ -323,7 +323,7 @@ def make_ta_image(infile, ext=0, useframes=3):
         
     ngroups = shape[-3]
     if ngroups % 2 == 0:
-        raise RunTimeError(("Warning: Input target acq exposure "
+        raise RuntimeError(("Warning: Input target acq exposure "
                             "must have an odd number of groups!"))
 
     # Group numbers to use. Adjust the values to account for
