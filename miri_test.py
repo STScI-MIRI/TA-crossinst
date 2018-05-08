@@ -7,24 +7,35 @@ import os
 import glob
 
 
-from jwst_ta import centroid
+from jwst_ta import centroid, make_ta_image
 
 # TEST SCRIPT FOR THE TA ALGORITHM
 plt.close('all')
 
-f = 'det_image_1_MIRIMAGE_F560Wexp1_TAImage_sim1_def3.fits'
+#f = 'MIRI_5489_49_S_20170308-042414_SCE3.fits'
+f = 'TA_img_for_MIRI_5489_49_S_20170308-042414_SCE3.fits'
 
 cdir= os.getcwd()
-os.chdir('../TA_sims/TA_ims/')
-files = glob.glob('*.fits')
+#os.chdir('../TA_sims/TA_ims/')
+#files = glob.glob('*.fits')
+files = [f]
+
+for file in files:
+    print(file)
+    # h = fits.getheader(file)
+    # these coordinates were obtained with DS9
+    xin = 389.440
+    yin = 792.498
+    x,y = centroid(infile=file, input_type='image', cbox=5, incoord=(xin, yin), roi=64, bgcorr=-1)
+    #im = make_ta_image(infile=f, ext=0, useframes=3)
+#os.chdir(cdir)
+
+    #plt.figure(figsize=[8,8])
+    #plt.imshow(im, origin='lower', aspect='equal', cmap='plasma')
+    #plt.colorbar()
+    #plt.show
 
 
-for file in files[:1]:
-    print file
-    h = fits.getheader(file)
-    xin = h['X000']
-    yin = h['Y000']
-    x,y = centroid(infile=file, cbox=5, incoord=(xin, yin), roi=64., bgcorr=100, out=0.)
 
-os.chdir(cdir)
+
   

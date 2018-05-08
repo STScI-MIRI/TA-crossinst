@@ -7,6 +7,7 @@ import astropy.io.fits as fits
 import astropy.io.ascii as ascii
 import matplotlib.pyplot as plt
 import pdb
+from IPython.core.debugger import set_trace
 
 def rclip(x, xmin, xmax):
     dum = x
@@ -241,19 +242,19 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
             yoffset = 0
             #xc, yc = checkbox(im, cbox, bgcorr)
         else:
-            roi_im = im[np.round(yin-(roi/2.)):np.round(yin+(roi/2.)+1),
-                        np.round(xin-(roi/2.)):np.round(xin+(roi/2.))]
+            roi_im = im[np.round(xin-(roi/2.)).astype(int):np.round(xin+(roi/2.)+1).astype(int),
+                        np.round(yin-(roi/2.)).astype(int):np.round(yin+(roi/2.)).astype(int)]
             #xc, yc = checkbox(im[np.round(yin-(roi/2.)):np.round(yin+(roi/2.)+1), np.round(xin-(roi/2.)):np.round(xin+(roi/2.))], cbox, bgcorr)
             #xc += np.round(xin-(roi/2.))
             #yc += np.round(yin-(roi/2.))
-            xoffset = np.round(xin-(roi/2.))
-            yoffset = np.round(yin-(roi/2.))
+            xoffset = np.round(xin-(roi/2.)).astype(int)
+            yoffset = np.round(yin-(roi/2.)).astype(int)
     else:
         #xc, yc = checkbox(im, cbox, bgcorr)
         roi_im = im
         xoffset = 0
         yoffset = 0
-
+    
     # Perform coarse centroiding. Pay attention to coordinate
     # offsets
     xc, yc = checkbox(roi_im, cbox)
@@ -261,8 +262,11 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     yc += yoffset
     print('Coarse centroid found at ({0}, {1})'.format(xc, yc))
 
+    set_trace()
+    
     # Iterate fine centroiding
-    iter_thresh = 0.1
+    # Set the threshold to something high (e.g. 1.0) for testing; lower (0.1) for real measurements.
+    iter_thresh = 1.0
     nconv = 0
     while nconv == 0:
         xf, yf = fine_centroid(im, cwin, xc, yc)
@@ -311,12 +315,25 @@ def make_ta_image(infile, ext=0, useframes=3):
     # Read in data. Convert to floats
     with fits.open(infile) as h:
         data = h[ext].data
+        head = h[ext].header
     data = data * 1.
         
     shape = data.shape
+    
+    #set_trace()
     if len(shape) <= 2:
         raise RuntimeError(("Warning: Input target acq exposure must "
                             "have multiple groups!"))
+    
+    elif len(shape) == 3:
+        # If there are only 3 dimensions, check the header keywords to identify ngroups, nints against the shape of the cube
+        # If there are multiple integrations, use only the first
+        if shape[0] == head['NGROUPS'] * head['NINT']:
+            data = data[:head['NGROUPS'], :, :]
+            shape = data.shape
+        else:
+            raise RuntimeError("Number of groups and integrations in header does not match data format")
+    
     elif len(shape) == 4:
         # If there are multiple integrations, use only the first
         data = data[0, :, :, :]
@@ -330,6 +347,8 @@ def make_ta_image(infile, ext=0, useframes=3):
     # python being 0-indexed
     if useframes == 3:
         frames = [0, np.int((ngroups-1)/2), ngroups-1]
+        print('Data has {0} groups'.format(ngroups))
+        print('Using {0} for differencing'.format(frames))
         diff21 = data[frames[1], :, :] - data[frames[0], :, :]
         diff32 = data[frames[2], :, :] - data[frames[1], :, :]
         ta_img = np.minimum(diff21, diff32)
