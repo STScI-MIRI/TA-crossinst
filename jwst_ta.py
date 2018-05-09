@@ -192,7 +192,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
         im = hdu[ext].data
         h = hdu[ext].header
     elif input_type.lower() == 'ramp':
-        im = make_ta_image(infile, ext=ext, useframes=3)
+        im = make_ta_image(infile, ext=ext, useframes=3, save=False)
         # Save TA image for code testing
         h0 = fits.PrimaryHDU(im)
         hl = fits.HDUList([h0])
@@ -262,7 +262,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     yc += yoffset
     print('Coarse centroid found at ({0}, {1})'.format(xc, yc))
 
-    set_trace()
+    #set_trace()
     
     # Iterate fine centroiding
     # Set the threshold to something high (e.g. 1.0) for testing; lower (0.1) for real measurements.
@@ -283,7 +283,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     
 #=====================================================
 
-def make_ta_image(infile, ext=0, useframes=3):
+def make_ta_image(infile, ext=0, useframes=3, save=False):
     """
     Create the image on which to perform the centroiding
     given a fits file containing an exposure with 
@@ -298,7 +298,7 @@ def make_ta_image(infile, ext=0, useframes=3):
               and the integration must have an odd number of groups
     ext -- Extension number containing the data.
            (Change to use 'SCI' rather than number?)
-    useframes -- Number of frames to use for the calculation.
+    useframes -- Number of frames to use for the calculation, provided as an integer or a list of integers.
                  Most of the time 3 frames are used, these 
                  being the 1st, (N+1)/2, and Nth groups
                  of the integration. 
@@ -306,6 +306,8 @@ def make_ta_image(infile, ext=0, useframes=3):
                  There are, apparently, ways to do the calculation
                  with larger numbers of groups, but I haven't 
                  seen the math for those yet.
+                 
+                 When providing a list of integers, the entries must be in the interval [1,NGROUPS]. The code will sort the group                      numbers in ascending order.
 
     Returns:
     --------
@@ -343,17 +345,54 @@ def make_ta_image(infile, ext=0, useframes=3):
         raise RuntimeError(("Warning: Input target acq exposure "
                             "must have an odd number of groups!"))
 
+    # First check whether an integer or a list were provided
     # Group numbers to use. Adjust the values to account for
     # python being 0-indexed
-    if useframes == 3:
-        frames = [0, np.int((ngroups-1)/2), ngroups-1]
+    
+    if type(useframes) is int:
+        if useframes == 3:
+            frames = [0, np.int((ngroups-1)/2), ngroups-1]
+            print('Data has {0} groups'.format(ngroups))
+            print('Using {0} for differencing'.format([frame+1 for frame in frames]))
+            scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
+            #print('Scale = {0}'.format(scale))
+            diff21 = data[frames[1], :, :] - data[frames[0], :, :]
+            diff32 = scale * data[frames[2], :, :] - data[frames[1], :, :]
+            ta_img = np.minimum(diff21, diff32)
+        elif useframes == 5:
+            something_else
+            
+    elif type(useframes) is list:
+        assert all(type(n) is int for n in useframes), "When passing a list to useframes, all entries must be integers."
+        assert len(useframes) in [3, 5], "A useframes list can currently only contain 3 or 5 values."
+        
+        # once asserted we have a list of 3 or 5 integers, sort and check that the numbers make sense.
+        useframes.sort()
+        assert useframes[-1] <= ngroups, "Highest group number exceeds the number of groups in the integration."
+        
+        # adjust the values to account for python being 0-indexed
+        frames = [n-1 for n in useframes]
         print('Data has {0} groups'.format(ngroups))
-        print('Using {0} for differencing'.format(frames))
+        print('Using {0} for differencing'.format([frame+1 for frame in frames]))
+        scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
+        #print('Scale = {0}'.format(scale))
         diff21 = data[frames[1], :, :] - data[frames[0], :, :]
-        diff32 = data[frames[2], :, :] - data[frames[1], :, :]
+        diff32 = scale * data[frames[2], :, :] - data[frames[1], :, :]
         ta_img = np.minimum(diff21, diff32)
-    elif useframes == 5:
-        something_else
+     
+    
+    if save == True:
+        h0 = fits.PrimaryHDU(ta_img)
+        hl = fits.HDUList([h0])
+        indir, inf = os.path.split(infile)
+        # if we've provided a custom list then add the group numbers to the output filename
+        if type(useframes) is list:
+            str_frames = [str(u) for u in useframes]
+            grps = ''.join(str_frames)
+            tafile = os.path.join(indir, 'TA_img_grp'+grps+'_for_'+inf)
+        else:
+            tafile = os.path.join(indir, 'TA_img_for_'+inf)
+        hl.writeto(tafile, overwrite=True)
 
     return ta_img
 
