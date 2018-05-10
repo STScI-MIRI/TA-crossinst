@@ -33,7 +33,7 @@ def checkbox(data, box):
     
     print('performing coarse centroiding on an array of size {0}'.format(np.shape(data)))
     
-    
+    set_trace()
     hbox = np.int(np.floor(box/2.))
     #print hbox
     psum = 0.
@@ -174,11 +174,12 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
                     centroiding is performed directly on the data in the
                     input file
     - ext:          extension number of the FITS file containing the science data (default = 0)
-    - checkbox:     the FULL size of the checkbox, in pixels, for coarse centroiding (default = 5)
+    - cbox:         the FULL size of the checkbox, in pixels, for coarse centroiding (default = 5)
     - cwin:         the FULL size of the centroid window, in pixels, for fine centroiding (default = 5)
     - incoord:      (x,y) input coordinates of the source position
-    - roi:          size of a region of interest to be used for the centroiding (optional). If not set, full image will be used for coarse centroiding
+    - roi:          size of a region of interest to be used for the centroiding (optional). If not set, full image will be used for coarse                       centroiding. 
                         * setting an ROI also requires input coordinates
+                        * the ROI size must be bigger than the cbox parameter
     - bgcorr:       background correction parameter. set to:
                         * negative value for NO background subtraction (default)
                         * 0 < bgcorr < 1 for fractional background subtraction
@@ -232,7 +233,11 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     
     # Extract the ROI
     if (roi is not None):
-        # first check that the ROI is a sensible number.
+        
+        #first check that the ROI is larger than the cbox size
+        assert roi > cbox, "ROI size must be larger than the cbox parameter"
+        
+        # now check that the ROI is a sensible number.
         # if it's bigger than the size of the array, use the
         # full array instead
         if (roi >= n[0])|(roi >= n[1]):
@@ -247,6 +252,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
             #xc, yc = checkbox(im[np.round(yin-(roi/2.)):np.round(yin+(roi/2.)+1), np.round(xin-(roi/2.)):np.round(xin+(roi/2.))], cbox, bgcorr)
             #xc += np.round(xin-(roi/2.))
             #yc += np.round(yin-(roi/2.))
+            print("ROI size is {0}".format(np.shape(roi_im)))
             xoffset = np.round(xin-(roi/2.)).astype(int)
             yoffset = np.round(yin-(roi/2.)).astype(int)
     else:
@@ -254,6 +260,8 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
         roi_im = im
         xoffset = 0
         yoffset = 0
+    
+    set_trace()
     
     # Perform coarse centroiding. Pay attention to coordinate
     # offsets
