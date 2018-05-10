@@ -33,7 +33,6 @@ def checkbox(data, box):
     
     print('performing coarse centroiding on an array of size {0}'.format(np.shape(data)))
     
-    set_trace()
     hbox = np.int(np.floor(box/2.))
     #print hbox
     psum = 0.
@@ -163,7 +162,7 @@ def bgrsub(data, val):
     
 #=====================================================
 
-def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None):
+def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None, thresh=0.1):
     
     '''
     Implementation of the JWST GENTALOCATE algorithm. Parameters key:
@@ -185,6 +184,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
                         * 0 < bgcorr < 1 for fractional background subtraction
                         * bgcorr > 1 for constant background subtraction number (this number will be subtracted from the entire image)
     - out:          enter a filename for output of the fit results to a file (default = None)
+    - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength                       data or low SNR data to prevent.
     '''
 
     # Read in data. Create the TA image if requested
@@ -247,12 +247,11 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
             yoffset = 0
             #xc, yc = checkbox(im, cbox, bgcorr)
         else:
-            roi_im = im[np.round(xin-(roi/2.)).astype(int):np.round(xin+(roi/2.)+1).astype(int),
+            roi_im = im[np.round(xin-(roi/2.)).astype(int):np.round(xin+(roi/2.)).astype(int),
                         np.round(yin-(roi/2.)).astype(int):np.round(yin+(roi/2.)).astype(int)]
-            #xc, yc = checkbox(im[np.round(yin-(roi/2.)):np.round(yin+(roi/2.)+1), np.round(xin-(roi/2.)):np.round(xin+(roi/2.))], cbox, bgcorr)
-            #xc += np.round(xin-(roi/2.))
-            #yc += np.round(yin-(roi/2.))
-            print("ROI size is {0}".format(np.shape(roi_im)))
+            
+            
+            #print("ROI size is {0}".format(np.shape(roi_im)))
             xoffset = np.round(xin-(roi/2.)).astype(int)
             yoffset = np.round(yin-(roi/2.)).astype(int)
     else:
@@ -261,20 +260,16 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
         xoffset = 0
         yoffset = 0
     
-    set_trace()
-    
     # Perform coarse centroiding. Pay attention to coordinate
     # offsets
     xc, yc = checkbox(roi_im, cbox)
     xc += xoffset
     yc += yoffset
     print('Coarse centroid found at ({0}, {1})'.format(xc, yc))
-
-    #set_trace()
     
     # Iterate fine centroiding
-    # Set the threshold to something high (e.g. 1.0) for testing; lower (0.1) for real measurements.
-    iter_thresh = 1.0
+    # Take the threshold from the input parameter thresh
+    iter_thresh = thresh
     nconv = 0
     while nconv == 0:
         xf, yf = fine_centroid(im, cwin, xc, yc)
