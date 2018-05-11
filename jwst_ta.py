@@ -31,8 +31,8 @@ def checkbox(data, box):
     
     '''
     
-    print('performing coarse centroiding on an array of size {0}'.format(np.shape(data)))
-    
+    #print('performing coarse centroiding on an array of size {0}'.format(np.shape(data)))
+
     hbox = np.int(np.floor(box/2.))
     #print hbox
     psum = 0.
@@ -116,7 +116,7 @@ def fine_centroid(data, cwin, xc, yc):
 
     return xc, yc
 #=====================================================
-def bgrsub(data, val):
+def bgrsub(data, val, size, coord):
     
     '''
     Does the background correction step, if needed. Method is determined from the val parameter:
@@ -125,32 +125,28 @@ def bgrsub(data, val):
     - 0 < val < 1:  fractional background. sorts all pixels and subtracts the value of this percentile
     - val > 1:      this value is subtracted uniformly from all pixels
     
+    - size:         specifies the size of the pixel area to be used for the calculation. if this number is negative, use the full image array.
+    - coord:        inherits the input coordinate from centroid(); required if you provide an roi size
+    
     '''
     
+ 
     if (val <= 0.):
         print('No background subtracted')
         outdata = data
     elif (val > 0.) & (val < 1.):
         
-        # test plotting code - cumulative distribution function of the pixels in data
+        if size < 0:
+            # if size is negative, use the full array
+            subdata = data
+
+        else:
+            subdata = data[np.round(coord[1]-(size/2.)).astype(int):np.round(coord[1]+(size/2.)).astype(int),
+                        np.round(coord[0]-(size/2.)).astype(int):np.round(coord[0]+(size/2.)).astype(int)]
+            
+        bgrval = np.percentile(subdata, val*100.)
         
-        bgrval = np.percentile(data, val*100.)
-
-        # Histogram of signal values
-        plt.figure()
-        bins = np.arange(-100,1000,50)
-        bins2 = np.linspace(1000,np.max(data),5)
-        bins = np.concatenate([bins,bins2])
-        plt.hist(np.ravel(data), bins=bins, lw = 1.5, histtype='step', cumulative=True, normed=True)
-        plt.axvline(bgrval, ymin=0., ymax=1., color='r',
-                    lw = 1.5, label='Background Level')
-        plt.xlim(np.min(data), np.min(data) + np.abs(bgrval)*4)
-        plt.xlabel("Signal (ADU)")
-        plt.ylabel("Cumulative Fraction of Pixels")
-        plt.legend(loc='lower right')
-        plt.show()
-
-        # Subtract background level
+        # Subtract background level from the FULL image
         outdata = data - bgrval
         print('subtracting {0} from image'.format(bgrval))
 
@@ -203,7 +199,12 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
 
     # Do background correction first
     if bgcorr > 0.:
-        im = bgrsub(im, bgcorr)
+        
+        # if a ROI size was provided, the value to be subtracted as background will be calculated using the pixels in the ROI only. Otherwise, use the full array.
+        if roi is not None:
+            im = bgrsub(im, bgcorr, roi, incoord)
+        else:
+            im = bgrsub(im, bgcorr, -1, incoord)
 
     # Apply flat field
     if flat is not None:
@@ -227,8 +228,8 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     n = [np.size(im, axis=i) for i in range(ndim)]
     
     # NOTE: in python the x-coord is axis 1, y-coord is axis 0
-    xin = incoord[1]
-    yin = incoord[0]
+    xin = incoord[0]
+    yin = incoord[1]
     print('Input coordinates = ({0}, {1})'.format(xin, yin))
     
     # Extract the ROI
@@ -247,8 +248,8 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
             yoffset = 0
             #xc, yc = checkbox(im, cbox, bgcorr)
         else:
-            roi_im = im[np.round(xin-(roi/2.)).astype(int):np.round(xin+(roi/2.)).astype(int),
-                        np.round(yin-(roi/2.)).astype(int):np.round(yin+(roi/2.)).astype(int)]
+            roi_im = im[np.round(yin-(roi/2.)).astype(int):np.round(yin+(roi/2.)).astype(int),
+                        np.round(xin-(roi/2.)).astype(int):np.round(xin+(roi/2.)).astype(int)]
             
             
             #print("ROI size is {0}".format(np.shape(roi_im)))
