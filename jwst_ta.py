@@ -89,11 +89,6 @@ def fine_centroid(data, cwin, xc, yc):
             wx = rclip(rwin-abs(i-xc)+0.5, 0.0, 1.0)
             wy = rclip(rwin-abs(j-yc)+0.5, 0.0, 1.0)
             ww = wx*wy
-            print(i,j)
-            print(ww)
-            # for testing - delete once tested
-            #wtarr[i,j] = ww
-            
             
             sumx += ww * data[int(j),int(i)] * i
             sumy += ww * data[int(j),int(i)] * j
@@ -159,7 +154,7 @@ def bgrsub(data, val, size, coord):
     
 #=====================================================
 
-def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None, thresh=0.1):
+def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None, thresh=0.05):
     
     '''
     Implementation of the JWST GENTALOCATE algorithm. Parameters key:
