@@ -79,20 +79,21 @@ def fine_centroid(data, cwin, xc, yc):
     rwin = np.floor(cwin/2.)
     
     # remember to add 1 so we get all cwin pixels
-    x = (xc - np.floor(cwin/2.)) + np.arange(cwin)
-    y = (yc - np.floor(cwin/2.)) + np.arange(cwin) 
-    #pdb.set_trace()
+    x = (np.round(xc) - np.floor(cwin/2.)) + np.arange(cwin)
+    y = (np.round(yc) - np.floor(cwin/2.)) + np.arange(cwin) 
     
-    # write weights out to an array - for testing
-    #wtarr = np.zeros_like(data)
+ 
     
     for i in x:
         for j in y:
             wx = rclip(rwin-abs(i-xc)+0.5, 0.0, 1.0)
             wy = rclip(rwin-abs(j-yc)+0.5, 0.0, 1.0)
             ww = wx*wy
+            print(i,j)
+            print(ww)
             # for testing - delete once tested
             #wtarr[i,j] = ww
+            
             
             sumx += ww * data[int(j),int(i)] * i
             sumy += ww * data[int(j),int(i)] * j
