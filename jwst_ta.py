@@ -330,7 +330,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
         
     shape = data.shape
     
-    pdb.set_trace()
+    #pdb.set_trace()
     if len(shape) <= 2:
         raise RuntimeError(("Warning: Input target acq exposure must "
                             "have multiple groups!"))
