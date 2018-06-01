@@ -112,7 +112,7 @@ def fine_centroid(data, cwin, xc, yc):
 
     return xc, yc
 #=====================================================
-def bgrsub(data, val, size, coord):
+def bgrsub(data, val, size, coord, silent=False):
     
     '''
     Does the background correction step, if needed. Method is determined from the val parameter:
@@ -128,7 +128,8 @@ def bgrsub(data, val, size, coord):
     
  
     if (val <= 0.):
-        print('No background subtracted')
+        if not silent:
+            print('No background subtracted')
         outdata = data
     elif (val > 0.) & (val < 1.):
         
@@ -144,7 +145,8 @@ def bgrsub(data, val, size, coord):
         
         # Subtract background level from the FULL image
         outdata = data - bgrval
-        print('subtracting {0} from image'.format(bgrval))
+        if not silent:
+            print('subtracting {0} from image'.format(bgrval))
 
     else:
         outdata = data - val
@@ -154,7 +156,7 @@ def bgrsub(data, val, size, coord):
     
 #=====================================================
 
-def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None, thresh=0.05):
+def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None, thresh=0.05, silent=False):
     
     '''
     Implementation of the JWST GENTALOCATE algorithm. Parameters key:
@@ -176,7 +178,9 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
                         * 0 < bgcorr < 1 for fractional background subtraction
                         * bgcorr > 1 for constant background subtraction number (this number will be subtracted from the entire image)
     - out:          enter a filename for output of the fit results to a file (default = None)
-    - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength                       data or low SNR data to prevent.
+    - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength    
+                       data or low SNR data to prevent.
+    - silent:       set to True if you want to suppress verbose output
     '''
 
     # Read in data. Create the TA image if requested
@@ -198,9 +202,9 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
         
         # if a ROI size was provided, the value to be subtracted as background will be calculated using the pixels in the ROI only. Otherwise, use the full array.
         if roi is not None:
-            im = bgrsub(im, bgcorr, roi, incoord)
+            im = bgrsub(im, bgcorr, roi, incoord, silent=silent)
         else:
-            im = bgrsub(im, bgcorr, -1, incoord)
+            im = bgrsub(im, bgcorr, -1, incoord, silent=silent)
 
     # Apply flat field
     if flat is not None:
@@ -226,7 +230,8 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     # NOTE: in python the x-coord is axis 1, y-coord is axis 0
     xin = incoord[0]
     yin = incoord[1]
-    print('Input coordinates = ({0}, {1})'.format(xin, yin))
+    if not silent:
+        print('Input coordinates = ({0}, {1})'.format(xin, yin))
     
     # Extract the ROI
     if (roi is not None):
@@ -262,7 +267,8 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     xc, yc = checkbox(roi_im, cbox)
     xc += xoffset
     yc += yoffset
-    print('Coarse centroid found at ({0}, {1})'.format(xc, yc))
+    if not silent:
+        print('Coarse centroid found at ({0}, {1})'.format(xc, yc))
     
     # Iterate fine centroiding
     # Take the threshold from the input parameter thresh
@@ -271,7 +277,8 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     while nconv == 0:
         xf, yf = fine_centroid(im, cwin, xc, yc)
         err = np.sqrt((xf-xin)**2 + (yf-yin)**2)
-        print(("Fine centroid found at (x, y) = ({0:.4f}, {1:.4f}). "
+        if not silent:
+            print(("Fine centroid found at (x, y) = ({0:.4f}, {1:.4f}). "
                "Rms error = {2:.4f}".format(xf, yf, err)))
         if (abs(xf-xc) <= iter_thresh) & (abs(yf-yc) <= iter_thresh):
             nconv = 1
@@ -283,7 +290,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     
 #=====================================================
 
-def make_ta_image(infile, ext=0, useframes=3, save=False):
+def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     """
     Create the image on which to perform the centroiding
     given a fits file containing an exposure with 
@@ -307,7 +314,8 @@ def make_ta_image(infile, ext=0, useframes=3, save=False):
                  with larger numbers of groups, but I haven't 
                  seen the math for those yet.
                  
-                 When providing a list of integers, the entries must be in the interval [1,NGROUPS]. The code will sort the group                      numbers in ascending order.
+                 When providing a list of integers, the entries must be in the interval [1,NGROUPS]. The code will sort the group numbers in ascending order.
+    silent -- set to True if you want to suppress verbose output
 
     Returns:
     --------
@@ -322,7 +330,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False):
         
     shape = data.shape
     
-    #set_trace()
+    pdb.set_trace()
     if len(shape) <= 2:
         raise RuntimeError(("Warning: Input target acq exposure must "
                             "have multiple groups!"))
@@ -341,9 +349,13 @@ def make_ta_image(infile, ext=0, useframes=3, save=False):
         data = data[0, :, :, :]
         
     ngroups = shape[-3]
+    
+    # don't report an error if data has an even number of groups, but do print a warning.
     if ngroups % 2 == 0:
-        raise RuntimeError(("Warning: Input target acq exposure "
-                            "must have an odd number of groups!"))
+        #raise RuntimeError(("Warning: Input target acq exposure "
+        #                    "must have an odd number of groups!"))
+        if not silent:
+            print('Warning: Input data has an even number of groups')
 
     # First check whether an integer or a list were provided
     # Group numbers to use. Adjust the values to account for
@@ -352,12 +364,13 @@ def make_ta_image(infile, ext=0, useframes=3, save=False):
     if type(useframes) is int:
         if useframes == 3:
             frames = [0, np.int((ngroups-1)/2), ngroups-1]
-            print('Data has {0} groups'.format(ngroups))
-            print('Using {0} for differencing'.format([frame+1 for frame in frames]))
+            if not silent:
+                print('Data has {0} groups'.format(ngroups))
+                print('Using {0} for differencing'.format([frame+1 for frame in frames]))
             scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
-            #print('Scale = {0}'.format(scale))
+            print('Scale = {0}'.format(scale))
             diff21 = data[frames[1], :, :] - data[frames[0], :, :]
-            diff32 = scale * data[frames[2], :, :] - data[frames[1], :, :]
+            diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
             ta_img = np.minimum(diff21, diff32)
         elif useframes == 5:
             something_else
@@ -372,12 +385,13 @@ def make_ta_image(infile, ext=0, useframes=3, save=False):
         
         # adjust the values to account for python being 0-indexed
         frames = [n-1 for n in useframes]
-        print('Data has {0} groups'.format(ngroups))
-        print('Using {0} for differencing'.format([frame+1 for frame in frames]))
+        if not silent:
+            print('Data has {0} groups'.format(ngroups))
+            print('Using {0} for differencing'.format([frame+1 for frame in frames]))
         scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
-        #print('Scale = {0}'.format(scale))
+        print('Scale = {0}'.format(scale))
         diff21 = data[frames[1], :, :] - data[frames[0], :, :]
-        diff32 = scale * data[frames[2], :, :] - data[frames[1], :, :]
+        diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
         ta_img = np.minimum(diff21, diff32)
      
     
