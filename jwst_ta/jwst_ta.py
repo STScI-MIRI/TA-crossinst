@@ -6,8 +6,6 @@ import numpy as np
 import astropy.io.fits as fits
 import astropy.io.ascii as ascii
 import matplotlib.pyplot as plt
-import pdb
-from IPython.core.debugger import set_trace
 
 def rclip(x, xmin, xmax):
     dum = x
@@ -33,7 +31,7 @@ def checkbox(data, box):
     
     #print('performing coarse centroiding on an array of size {0}'.format(np.shape(data)))
 
-    hbox = np.int(np.floor(box/2.))
+    hbox = int(np.floor(box/2.))
     #print hbox
     psum = 0.
     ix = 0.
@@ -223,7 +221,6 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
         im = apply_flat_field(im, flatfield)
         
     ndim = np.ndim(im)
-    #pdb.set_trace()
     
     n = [np.size(im, axis=i) for i in range(ndim)]
     
@@ -330,7 +327,6 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
         
     shape = data.shape
     
-    #pdb.set_trace()
     if len(shape) <= 2:
         raise RuntimeError(("Warning: Input target acq exposure must "
                             "have multiple groups!"))
@@ -363,7 +359,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     
     if type(useframes) is int:
         if useframes == 3:
-            frames = [0, np.int((ngroups-1)/2), ngroups-1]
+            frames = [0, int((ngroups-1)/2), ngroups-1]
             if not silent:
                 print('Data has {0} groups'.format(ngroups))
                 print('Using {0} for differencing'.format([frame+1 for frame in frames]))
