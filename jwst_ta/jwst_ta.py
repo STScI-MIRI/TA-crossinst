@@ -154,12 +154,181 @@ def bgrsub(data, val, size, coord, silent=False):
     
 #=====================================================
 
+def centroid_from_image(
+        im : np.ndarray,
+        cbox : int = 5,
+        cwin : int = 5,
+        incoord : tuple[float, float] = (0., 0.),
+        roi : int | None = None,
+        bgcorr : float  = -1,
+        flat : str | None = None,
+        flatext : int  = 0,
+        out : str  | None = None,
+        thresh : float = 0.05,
+        silent : bool = False,
+) -> tuple[float, float] :
+    """
+    Implementation of the JWST GENTALOCATE algorithm. Parameters key:
+
+    Parameters
+    ----------
+    - im:           2-D numpy array with a source located near `incoord`
+    - cbox:         the FULL size of the checkbox, in pixels, for coarse centroiding (default = 5)
+    - cwin:         the FULL size of the centroid window, in pixels, for fine centroiding (default = 5)
+    - incoord:      (x,y) input coordinates of the source position
+    - roi:          size of a region of interest to be used for the centroiding (optional). If not set, full image will be used for coarse                       centroiding. 
+                        * setting an ROI also requires input coordinates
+                        * the ROI size must be bigger than the cbox parameter
+    - bgcorr:       background correction parameter. set to:
+                        * negative value for NO background subtraction (default)
+                        * 0 < bgcorr < 1 for fractional background subtraction
+                        * bgcorr > 1 for constant background subtraction number (this number will be subtracted from the entire image)
+    - flat:         enter a filename if you have a flat-fielding image to perform flat-fielding
+    - out:          enter a filename for output of the fit results to a file (default = None)
+    - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength    
+                       data or low SNR data to prevent.
+    - silent:       set to True if you want to suppress verbose output
+
+    Output
+    ------
+    Define your output
+
+    """
+    # Do background correction first
+    if bgcorr > 0.:
+        
+        # if a ROI size was provided, the value to be subtracted as background will be calculated using the pixels in the ROI only. Otherwise, use the full array.
+        if roi is not None:
+            im = bgrsub(im, bgcorr, roi, incoord, silent=silent)
+        else:
+            im = bgrsub(im, bgcorr, -1, incoord, silent=silent)
+
+    # Apply flat field
+    if flat is not None:
+        # Read in flat
+        with fits.open(flat) as ff:
+            flatfield = ff[flatext].data
+            
+        # Flat must be the same size as the data
+        ffshape = flatfield.shape
+        dshape = im.shape
+        if dshape != ffshape:
+            raise RunTimeError(("WARNING: flat field shape ({}) does "
+                                "not match data shape ({})!"
+                                .format(ffshape,dshape)))
+        # Apply flat
+        im = apply_flat_field(im, flatfield)
+        
+    ndim = np.ndim(im)
+    
+    n = [np.size(im, axis=i) for i in range(ndim)]
+    
+    # NOTE: in python the x-coord is axis 1, y-coord is axis 0
+    xin = incoord[0]
+    yin = incoord[1]
+    if not silent:
+        print('Input coordinates = ({0}, {1})'.format(xin, yin))
+    
+    # Extract the ROI
+    if (roi is not None):
+        
+        #first check that the ROI is larger than the cbox size
+        assert roi > cbox, "ROI size must be larger than the cbox parameter"
+        
+        # now check that the ROI is a sensible number.
+        # if it's bigger than the size of the array, use the
+        # full array instead
+        if (roi >= n[0])|(roi >= n[1]):
+            print('ROI size is bigger than the image; using full image instead')
+            roi_im = im
+            xoffset = 0
+            yoffset = 0
+            #xc, yc = checkbox(im, cbox, bgcorr)
+        else:
+            roi_im = im[np.round(yin-(roi/2.)).astype(int):np.round(yin+(roi/2.)).astype(int),
+                        np.round(xin-(roi/2.)).astype(int):np.round(xin+(roi/2.)).astype(int)]
+            
+            
+            #print("ROI size is {0}".format(np.shape(roi_im)))
+            xoffset = np.round(xin-(roi/2.)).astype(int)
+            yoffset = np.round(yin-(roi/2.)).astype(int)
+    else:
+        #xc, yc = checkbox(im, cbox, bgcorr)
+        roi_im = im
+        xoffset = 0
+        yoffset = 0
+    
+    # Perform coarse centroiding. Pay attention to coordinate
+    # offsets
+    xc, yc = checkbox(roi_im, cbox)
+    xc += xoffset
+    yc += yoffset
+    if not silent:
+        print('Coarse centroid found at ({0}, {1})'.format(xc, yc))
+    
+    # Iterate fine centroiding
+    # Take the threshold from the input parameter thresh
+    iter_thresh = thresh
+    nconv = 0
+    while nconv == 0:
+        xf, yf = fine_centroid(im, cwin, xc, yc)
+        err = np.sqrt((xf-xin)**2 + (yf-yin)**2)
+        if not silent:
+            print(("Fine centroid found at (x, y) = ({0:.4f}, {1:.4f}). "
+               "Rms error = {2:.4f}".format(xf, yf, err)))
+        if (abs(xf-xc) <= iter_thresh) & (abs(yf-yc) <= iter_thresh):
+            nconv = 1
+        xc = xf
+        yc = yf
+    
+
+    return xf, yf
+
+def load_im_from_file(
+        infile : str = None,
+        input_type : str = 'image',
+        ext : int = 0
+) -> np.ndarray :
+    """
+    Prepare an image, loaded from the given file name, for analysis with the TA algorithm.
+
+    Parameters
+    ----------
+    - infile:       FITS filename or 2-D numpy array
+    - input_type:   description of input data: 'image' or 'ramp'. If 'ramp'
+                    then make_ta_image functin is run. If 'image' (default)
+                    centroiding is performed directly on the data in the
+                    input file
+    - ext:          extension number of the FITS file containing the science data (default = 0)
+
+    Output
+    ------
+    im : 2-D numpy array suitable for input into the centroiding function
+
+    """
+    # Read in data. Create the TA image if requested
+    if input_type.lower() == 'image':
+        hdu = fits.open(infile)
+        im = hdu[ext].data
+        h = hdu[ext].header
+    elif input_type.lower() == 'ramp':
+        im = make_ta_image(infile, ext=ext, useframes=3, save=False)
+        # Save TA image for code testing
+        h0 = fits.PrimaryHDU(im)
+        hl = fits.HDUList([h0])
+        indir, inf = os.path.split(infile)
+        tafile = os.path.join(indir, 'TA_img_for_'+inf)
+        hl.writeto(tafile, overwrite=True)
+    else:
+        return None
+    return im
+
 def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None, thresh=0.05, silent=False):
     
     '''
     Implementation of the JWST GENTALOCATE algorithm. Parameters key:
     
-    - infile:       FITS filename
+    - infile:       FITS filename or 2-D numpy array
     - input_type:   description of input data: 'image' or 'ramp'. If 'ramp'
                     then make_ta_image functin is run. If 'image' (default)
                     centroiding is performed directly on the data in the
@@ -182,7 +351,9 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     '''
 
     # Read in data. Create the TA image if requested
-    if input_type.lower() == 'image':
+    if isinstance(infile, np.ndarray):
+        im = infile
+    elif input_type.lower() == 'image':
         hdu = fits.open(infile)
         im = hdu[ext].data
         h = hdu[ext].header
@@ -322,7 +493,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     # Read in data. Convert to floats
     with fits.open(infile) as h:
         data = h[ext].data
-        head = h[ext].header
+        head = h[0].header
     data = data * 1.
         
     shape = data.shape
@@ -334,7 +505,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     elif len(shape) == 3:
         # If there are only 3 dimensions, check the header keywords to identify ngroups, nints against the shape of the cube
         # If there are multiple integrations, use only the first
-        if shape[0] == head['NGROUPS'] * head['NINT']:
+        if shape[0] == head['NGROUPS'] * head['NINTS']:
             data = data[:head['NGROUPS'], :, :]
             shape = data.shape
         else:
@@ -583,7 +754,3 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
 
         
 #====================================================== 
-    
-    
-    
-    
