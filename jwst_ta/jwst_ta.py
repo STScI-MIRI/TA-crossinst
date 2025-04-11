@@ -2,6 +2,7 @@
 
 import os
 from copy import copy
+from typing import Concatenate
 import numpy as np
 import astropy.io.fits as fits
 import astropy.io.ascii as ascii
@@ -154,17 +155,25 @@ def bgrsub(data, val, size, coord, silent=False):
     
 #=====================================================
 
-def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0., 0.), roi=None, bgcorr=-1, flat=None, flatext=0, out=None, thresh=0.05, silent=False):
-    
-    '''
+def centroid_from_image(
+        im : np.ndarray,
+        cbox : int = 5,
+        cwin : int = 5,
+        incoord : tuple[float, float] = (0., 0.),
+        roi : int | None = None,
+        bgcorr : float  = -1,
+        flat : str | None = None,
+        flatext : int  = 0,
+        out : str  | None = None,
+        thresh : float = 0.05,
+        silent : bool = False,
+) -> tuple[float, float] :
+    """
     Implementation of the JWST GENTALOCATE algorithm. Parameters key:
-    
-    - infile:       FITS filename
-    - input_type:   description of input data: 'image' or 'ramp'. If 'ramp'
-                    then make_ta_image functin is run. If 'image' (default)
-                    centroiding is performed directly on the data in the
-                    input file
-    - ext:          extension number of the FITS file containing the science data (default = 0)
+
+    Parameters
+    ----------
+    - im:           2-D numpy array with a source located near `incoord`
     - cbox:         the FULL size of the checkbox, in pixels, for coarse centroiding (default = 5)
     - cwin:         the FULL size of the centroid window, in pixels, for fine centroiding (default = 5)
     - incoord:      (x,y) input coordinates of the source position
@@ -175,29 +184,20 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
                         * negative value for NO background subtraction (default)
                         * 0 < bgcorr < 1 for fractional background subtraction
                         * bgcorr > 1 for constant background subtraction number (this number will be subtracted from the entire image)
-    - out:          enter a filename for output of the fit results to a file (default = None)
-    - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength    
+    - flat:         enter a filename if you have a flat-fielding image to perform flat-fielding
+    - out:          enter a filename for output of the fit results to a file (default = None) (not actually used)
+    - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength
                        data or low SNR data to prevent.
     - silent:       set to True if you want to suppress verbose output
-    '''
 
-    # Read in data. Create the TA image if requested
-    if input_type.lower() == 'image':
-        hdu = fits.open(infile)
-        im = hdu[ext].data
-        h = hdu[ext].header
-    elif input_type.lower() == 'ramp':
-        im = make_ta_image(infile, ext=ext, useframes=3, save=False)
-        # Save TA image for code testing
-        h0 = fits.PrimaryHDU(im)
-        hl = fits.HDUList([h0])
-        indir, inf = os.path.split(infile)
-        tafile = os.path.join(indir, 'TA_img_for_'+inf)
-        hl.writeto(tafile, overwrite=True)
+    Output
+    ------
+    Define your output
 
+    """
     # Do background correction first
     if bgcorr > 0.:
-        
+
         # if a ROI size was provided, the value to be subtracted as background will be calculated using the pixels in the ROI only. Otherwise, use the full array.
         if roi is not None:
             im = bgrsub(im, bgcorr, roi, incoord, silent=silent)
@@ -209,7 +209,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
         # Read in flat
         with fits.open(flat) as ff:
             flatfield = ff[flatext].data
-            
+
         # Flat must be the same size as the data
         ffshape = flatfield.shape
         dshape = im.shape
@@ -218,7 +218,7 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
                                 "not match data shape ({})!"
                                 .format(ffshape,dshape)))
         # Apply flat
-        im = apply_flat_field(im, flatfield)
+        im = apply_flat_field(im, flatfield, silent=silent)
         
     ndim = np.ndim(im)
     
@@ -284,6 +284,92 @@ def centroid(infile=None, input_type='image', ext=0, cbox=5, cwin=5, incoord=(0.
     
 
     return xf, yf
+
+def load_im_from_file(
+        infile : str = None,
+        input_type : str = 'image',
+        ext : int = 0,
+        silent : bool = True,
+) -> np.ndarray :
+    """
+    Prepare an image, loaded from the given file name, for analysis with the TA algorithm.
+
+    Parameters
+    ----------
+    - infile:       FITS filename or 2-D numpy array
+    - input_type:   description of input data: 'image' or 'ramp'. If 'ramp'
+                    then make_ta_image functin is run. If 'image' (default)
+                    centroiding is performed directly on the data in the
+                    input file
+    - ext:          extension number of the FITS file containing the science data (default = 0)
+
+    Output
+    ------
+    im : 2-D numpy array suitable for input into the centroiding function
+
+    """
+    # Read in data. Create the TA image if requested
+    if input_type.lower() == 'image':
+        hdu = fits.open(infile)
+        im = hdu[ext].data
+        h = hdu[ext].header
+    elif input_type.lower() == 'ramp':
+        im = make_ta_image(infile, ext=ext, useframes=3, save=False, silent=silent)
+        # Save TA image for code testing
+        h0 = fits.PrimaryHDU(im)
+        hl = fits.HDUList([h0])
+        indir, inf = os.path.split(infile)
+        tafile = os.path.join(indir, 'TA_img_for_'+inf)
+        hl.writeto(tafile, overwrite=True)
+    else:
+        return None
+    return im
+
+def centroid(
+        infile : str,
+        input_type : str ='image',
+        ext : int = 0,
+        cbox : int = 5,
+        cwin : int = 5,
+        incoord : tuple[float, float] = (0., 0.),
+        roi : int | None = None,
+        bgcorr : float = -1,
+        flat : str | None = None,
+        flatext : int = 0,
+        out : str | None = None,
+        thresh : float = 0.05,
+        silent : bool = False
+) -> tuple[float, float]:
+    
+    '''
+    Implementation of the JWST GENTALOCATE algorithm. Parameters key:
+    
+    - infile:       FITS filename
+    - input_type:   description of input data: 'image' or 'ramp'. If 'ramp'
+                    then make_ta_image functin is run. If 'image' (default)
+                    centroiding is performed directly on the data in the
+                    input file
+    - ext:          extension number of the FITS file containing the science data (default = 0)
+    - cbox:         the FULL size of the checkbox, in pixels, for coarse centroiding (default = 5)
+    - cwin:         the FULL size of the centroid window, in pixels, for fine centroiding (default = 5)
+    - incoord:      (x,y) input coordinates of the source position
+    - roi:          size of a region of interest to be used for the centroiding (optional). If not set, full image will be used for coarse centroiding.
+                        * setting an ROI also requires input coordinates
+                        * the ROI size must be bigger than the cbox parameter
+    - bgcorr:       background correction parameter. set to:
+                        * negative value for NO background subtraction (default)
+                        * 0 < bgcorr < 1 for fractional background subtraction
+                        * bgcorr > 1 for constant background subtraction number (this number will be subtracted from the entire image)
+    - flat:         enter a filename containing a flatfielding image
+    - flatext:      the extension in the flatfielding file that has the image
+    - out:          enter a filename for output of the fit results to a file (default = None)
+    - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength
+                       data or low SNR data to prevent.
+    - silent:       set to True if you want to suppress verbose output
+    '''
+    im = load_im_from_file(infile, input_type, ext)
+    centroid = centroid_from_image(im, cbox, cwin, incoord, roi, bgcorr, flat, flatext, out, thresh, silent)
+    return centroid
     
 #=====================================================
 
@@ -322,7 +408,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     # Read in data. Convert to floats
     with fits.open(infile) as h:
         data = h[ext].data
-        head = h[ext].header
+        head = h[0].header
     data = data * 1.
         
     shape = data.shape
@@ -334,7 +420,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     elif len(shape) == 3:
         # If there are only 3 dimensions, check the header keywords to identify ngroups, nints against the shape of the cube
         # If there are multiple integrations, use only the first
-        if shape[0] == head['NGROUPS'] * head['NINT']:
+        if shape[0] == head['NGROUPS'] * head['NINTS']:
             data = data[:head['NGROUPS'], :, :]
             shape = data.shape
         else:
@@ -360,37 +446,37 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     if type(useframes) is int:
         if useframes == 3:
             frames = [0, int((ngroups-1)/2), ngroups-1]
+            scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
             if not silent:
                 print('Data has {0} groups'.format(ngroups))
                 print('Using {0} for differencing'.format([frame+1 for frame in frames]))
-            scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
-            print('Scale = {0}'.format(scale))
+                print('Scale = {0}'.format(scale))
             diff21 = data[frames[1], :, :] - data[frames[0], :, :]
             diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
             ta_img = np.minimum(diff21, diff32)
         elif useframes == 5:
             something_else
-            
+
     elif type(useframes) is list:
         assert all(type(n) is int for n in useframes), "When passing a list to useframes, all entries must be integers."
         assert len(useframes) in [3, 5], "A useframes list can currently only contain 3 or 5 values."
-        
+
         # once asserted we have a list of 3 or 5 integers, sort and check that the numbers make sense.
         useframes.sort()
         assert useframes[-1] <= ngroups, "Highest group number exceeds the number of groups in the integration."
-        
+
         # adjust the values to account for python being 0-indexed
         frames = [n-1 for n in useframes]
+        scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
         if not silent:
             print('Data has {0} groups'.format(ngroups))
             print('Using {0} for differencing'.format([frame+1 for frame in frames]))
-        scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
-        print('Scale = {0}'.format(scale))
+            print('Scale = {0}'.format(scale))
         diff21 = data[frames[1], :, :] - data[frames[0], :, :]
         diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
         ta_img = np.minimum(diff21, diff32)
-     
-    
+
+
     if save == True:
         h0 = fits.PrimaryHDU(ta_img)
         hl = fits.HDUList([h0])
@@ -408,7 +494,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
 
 
 #=====================================================
-def apply_flat_field(image, flat):
+def apply_flat_field(image, flat, silent=False):
     """
     Apply flat field to TA image. Assume the flat 
     has the format matching those to be used on 
@@ -443,14 +529,14 @@ def apply_flat_field(image, flat):
     # NOT SURE IF THIS IS IMPLEMENTED IN THE REAL
     # GENTALOCATE OR NOT...
     if np.any(bad):
-        image = fixbadpix(image)
+        image = fixbadpix(image, silent=silent)
 
     return image
 
 
 
 #======================================================
-def fixbadpix(data, maxstampwidth=3, method='median'):
+def fixbadpix(data, maxstampwidth=3, method='median', silent=False):
     """
     Replace the values of bad pixels in the TA image
     with interpolated values from neighboring good
@@ -488,14 +574,15 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
         print("maxstampwidth must be odd. Adding one to input value.")
         maxstampwidth += 1 
 
-    half = np.int((maxstampwidth - 1)/2)
+    half = int((maxstampwidth - 1)/2)
 
     bpix = np.isnan(data)
     bad = np.where(bpix)
     # Loop over the bad pixels and correct
     for bady, badx in zip(bad[0], bad[1]):
 
-        print('Bad pixel:',bady,badx)
+        if not silent:
+            print('Bad pixel:',bady,badx)
         
         substamp = np.zeros((maxstampwidth, maxstampwidth))
         substamp[:,:] = np.nan
@@ -535,18 +622,21 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
         neighborsy = [half+1, half, half-1, half]
         if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 4:
             data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
-            print(("Good pixels within nearest 4 neighbors. Mean: {}"
-                   .format(mmethod(substamp[neighborsx, neighborsy]))))
+            if not silent:
+                print(("Good pixels within nearest 4 neighbors. Mean: {}"
+                       .format(mmethod(substamp[neighborsx, neighborsy]))))
             continue
 
         # If the adjacent pixels are all NaN, expand to include corners
         else:
-            neighborsx.append([half-1, half+1, half+1, half-1])
-            neighborsy.append([half+1, half+1, half-1, half-1])
+            for i in [half-1, half+1, half+1, half-1]:
+                neighborsx.append(i)
+                neighborsy.append(i)
             if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 8:
                 data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
-                print(("Good pixels within 8 nearest neighbors. Mean: {}"
-                       .format(mmethod(substamp[neighborsx, neighborsy]))))
+                if not silent:
+                    print(("Good pixels within 8 nearest neighbors. Mean: {}"
+                           .format(mmethod(substamp[neighborsx, neighborsy]))))
                 continue
 
         # If all pixels are still NaN, iteratviely expand to include
@@ -571,19 +661,17 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
             neighborsy.extend(newy)
             if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < (len(neighbosrsx)):
                 data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
-                print("Expanding to {} rows".format(delta))
+                if not silent:
+                    print("Expanding to {} rows".format(delta))
                 continue
             else:
                 delta += 1
-        print(("Warning: all pixels within {} rows/cols of the bad pixel at ({},{}) "
-               "are also bad. Cannot correct this bad pixel with this stamp image"
-               "size.".format(delta, badx, bady)))
+        if not silent:
+            print(("Warning: all pixels within {} rows/cols of the bad pixel at ({},{}) "
+                   "are also bad. Cannot correct this bad pixel with this stamp image"
+                   "size.".format(delta, badx, bady)))
 
     return data
 
         
 #====================================================== 
-    
-    
-    
-    
