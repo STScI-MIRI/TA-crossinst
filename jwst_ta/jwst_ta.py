@@ -214,7 +214,7 @@ def centroid_from_image(
         ffshape = flatfield.shape
         dshape = im.shape
         if dshape != ffshape:
-            raise RunTimeError(("WARNING: flat field shape ({}) does "
+            raise RuntimeError(("WARNING: flat field shape ({}) does "
                                 "not match data shape ({})!"
                                 .format(ffshape,dshape)))
         # Apply flat
