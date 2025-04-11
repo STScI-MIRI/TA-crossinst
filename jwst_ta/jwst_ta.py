@@ -218,7 +218,7 @@ def centroid_from_image(
                                 "not match data shape ({})!"
                                 .format(ffshape,dshape)))
         # Apply flat
-        im = apply_flat_field(im, flatfield)
+        im = apply_flat_field(im, flatfield, silent=silent)
         
     ndim = np.ndim(im)
     
@@ -288,7 +288,8 @@ def centroid_from_image(
 def load_im_from_file(
         infile : str = None,
         input_type : str = 'image',
-        ext : int = 0
+        ext : int = 0,
+        silent : bool = True,
 ) -> np.ndarray :
     """
     Prepare an image, loaded from the given file name, for analysis with the TA algorithm.
@@ -313,7 +314,7 @@ def load_im_from_file(
         im = hdu[ext].data
         h = hdu[ext].header
     elif input_type.lower() == 'ramp':
-        im = make_ta_image(infile, ext=ext, useframes=3, save=False)
+        im = make_ta_image(infile, ext=ext, useframes=3, save=False, silent=silent)
         # Save TA image for code testing
         h0 = fits.PrimaryHDU(im)
         hl = fits.HDUList([h0])
@@ -445,37 +446,37 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     if type(useframes) is int:
         if useframes == 3:
             frames = [0, int((ngroups-1)/2), ngroups-1]
+            scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
             if not silent:
                 print('Data has {0} groups'.format(ngroups))
                 print('Using {0} for differencing'.format([frame+1 for frame in frames]))
-            scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
-            print('Scale = {0}'.format(scale))
+                print('Scale = {0}'.format(scale))
             diff21 = data[frames[1], :, :] - data[frames[0], :, :]
             diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
             ta_img = np.minimum(diff21, diff32)
         elif useframes == 5:
             something_else
-            
+
     elif type(useframes) is list:
         assert all(type(n) is int for n in useframes), "When passing a list to useframes, all entries must be integers."
         assert len(useframes) in [3, 5], "A useframes list can currently only contain 3 or 5 values."
-        
+
         # once asserted we have a list of 3 or 5 integers, sort and check that the numbers make sense.
         useframes.sort()
         assert useframes[-1] <= ngroups, "Highest group number exceeds the number of groups in the integration."
-        
+
         # adjust the values to account for python being 0-indexed
         frames = [n-1 for n in useframes]
+        scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
         if not silent:
             print('Data has {0} groups'.format(ngroups))
             print('Using {0} for differencing'.format([frame+1 for frame in frames]))
-        scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
-        print('Scale = {0}'.format(scale))
+            print('Scale = {0}'.format(scale))
         diff21 = data[frames[1], :, :] - data[frames[0], :, :]
         diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
         ta_img = np.minimum(diff21, diff32)
-     
-    
+
+
     if save == True:
         h0 = fits.PrimaryHDU(ta_img)
         hl = fits.HDUList([h0])
@@ -493,7 +494,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
 
 
 #=====================================================
-def apply_flat_field(image, flat):
+def apply_flat_field(image, flat, silent=False):
     """
     Apply flat field to TA image. Assume the flat 
     has the format matching those to be used on 
@@ -528,14 +529,14 @@ def apply_flat_field(image, flat):
     # NOT SURE IF THIS IS IMPLEMENTED IN THE REAL
     # GENTALOCATE OR NOT...
     if np.any(bad):
-        image = fixbadpix(image)
+        image = fixbadpix(image, silent=silent)
 
     return image
 
 
 
 #======================================================
-def fixbadpix(data, maxstampwidth=3, method='median'):
+def fixbadpix(data, maxstampwidth=3, method='median', silent=False):
     """
     Replace the values of bad pixels in the TA image
     with interpolated values from neighboring good
@@ -573,14 +574,15 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
         print("maxstampwidth must be odd. Adding one to input value.")
         maxstampwidth += 1 
 
-    half = np.int((maxstampwidth - 1)/2)
+    half = int((maxstampwidth - 1)/2)
 
     bpix = np.isnan(data)
     bad = np.where(bpix)
     # Loop over the bad pixels and correct
     for bady, badx in zip(bad[0], bad[1]):
 
-        print('Bad pixel:',bady,badx)
+        if not silent:
+            print('Bad pixel:',bady,badx)
         
         substamp = np.zeros((maxstampwidth, maxstampwidth))
         substamp[:,:] = np.nan
@@ -620,18 +622,21 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
         neighborsy = [half+1, half, half-1, half]
         if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 4:
             data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
-            print(("Good pixels within nearest 4 neighbors. Mean: {}"
-                   .format(mmethod(substamp[neighborsx, neighborsy]))))
+            if not silent:
+                print(("Good pixels within nearest 4 neighbors. Mean: {}"
+                       .format(mmethod(substamp[neighborsx, neighborsy]))))
             continue
 
         # If the adjacent pixels are all NaN, expand to include corners
         else:
-            neighborsx.append([half-1, half+1, half+1, half-1])
-            neighborsy.append([half+1, half+1, half-1, half-1])
+            for i in [half-1, half+1, half+1, half-1]:
+                neighborsx.append(i)
+                neighborsy.append(i)
             if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 8:
                 data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
-                print(("Good pixels within 8 nearest neighbors. Mean: {}"
-                       .format(mmethod(substamp[neighborsx, neighborsy]))))
+                if not silent:
+                    print(("Good pixels within 8 nearest neighbors. Mean: {}"
+                           .format(mmethod(substamp[neighborsx, neighborsy]))))
                 continue
 
         # If all pixels are still NaN, iteratviely expand to include
@@ -656,13 +661,15 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
             neighborsy.extend(newy)
             if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < (len(neighbosrsx)):
                 data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
-                print("Expanding to {} rows".format(delta))
+                if not silent:
+                    print("Expanding to {} rows".format(delta))
                 continue
             else:
                 delta += 1
-        print(("Warning: all pixels within {} rows/cols of the bad pixel at ({},{}) "
-               "are also bad. Cannot correct this bad pixel with this stamp image"
-               "size.".format(delta, badx, bady)))
+        if not silent:
+            print(("Warning: all pixels within {} rows/cols of the bad pixel at ({},{}) "
+                   "are also bad. Cannot correct this bad pixel with this stamp image"
+                   "size.".format(delta, badx, bady)))
 
     return data
 
