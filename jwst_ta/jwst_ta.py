@@ -288,7 +288,8 @@ def centroid_from_image(
 def load_im_from_file(
         infile : str = None,
         input_type : str = 'image',
-        ext : int = 0
+        ext : int = 0,
+        silent : bool = True,
 ) -> np.ndarray :
     """
     Prepare an image, loaded from the given file name, for analysis with the TA algorithm.
@@ -313,7 +314,7 @@ def load_im_from_file(
         im = hdu[ext].data
         h = hdu[ext].header
     elif input_type.lower() == 'ramp':
-        im = make_ta_image(infile, ext=ext, useframes=3, save=False)
+        im = make_ta_image(infile, ext=ext, useframes=3, save=False, silent=silent)
         # Save TA image for code testing
         h0 = fits.PrimaryHDU(im)
         hl = fits.HDUList([h0])
@@ -445,37 +446,37 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     if type(useframes) is int:
         if useframes == 3:
             frames = [0, int((ngroups-1)/2), ngroups-1]
+            scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
             if not silent:
                 print('Data has {0} groups'.format(ngroups))
                 print('Using {0} for differencing'.format([frame+1 for frame in frames]))
-            scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
-            print('Scale = {0}'.format(scale))
+                print('Scale = {0}'.format(scale))
             diff21 = data[frames[1], :, :] - data[frames[0], :, :]
             diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
             ta_img = np.minimum(diff21, diff32)
         elif useframes == 5:
             something_else
-            
+
     elif type(useframes) is list:
         assert all(type(n) is int for n in useframes), "When passing a list to useframes, all entries must be integers."
         assert len(useframes) in [3, 5], "A useframes list can currently only contain 3 or 5 values."
-        
+
         # once asserted we have a list of 3 or 5 integers, sort and check that the numbers make sense.
         useframes.sort()
         assert useframes[-1] <= ngroups, "Highest group number exceeds the number of groups in the integration."
-        
+
         # adjust the values to account for python being 0-indexed
         frames = [n-1 for n in useframes]
+        scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
         if not silent:
             print('Data has {0} groups'.format(ngroups))
             print('Using {0} for differencing'.format([frame+1 for frame in frames]))
-        scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
-        print('Scale = {0}'.format(scale))
+            print('Scale = {0}'.format(scale))
         diff21 = data[frames[1], :, :] - data[frames[0], :, :]
         diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
         ta_img = np.minimum(diff21, diff32)
-     
-    
+
+
     if save == True:
         h0 = fits.PrimaryHDU(ta_img)
         hl = fits.HDUList([h0])
