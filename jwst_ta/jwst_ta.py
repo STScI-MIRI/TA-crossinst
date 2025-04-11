@@ -574,7 +574,7 @@ def fixbadpix(data, maxstampwidth=3, method='median'):
         print("maxstampwidth must be odd. Adding one to input value.")
         maxstampwidth += 1 
 
-    half = np.int((maxstampwidth - 1)/2)
+    half = int((maxstampwidth - 1)/2)
 
     bpix = np.isnan(data)
     bad = np.where(bpix)
