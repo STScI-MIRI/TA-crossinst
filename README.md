@@ -6,6 +6,12 @@ This repository contains:
 - miri_test.py: a script that shows the calling sequence, used with MIRI data and parameters. can be used for testing.
 - nircam_test.py: as above, for NIRCam.
 
+Setup:
+- Clone the repository to a local folder using `git clone https://github.com/STScI-MIRI/TA-crossinst.git`
+- If necessary, activate the appropriate conda environment.
+- `cd` to the folder where you cloned the repository and run `pip install .` (or `pip install -e .` for editable installations).
+- Import the code with `from jwst_ta import jwst_ta`
+
 
 Status (May 10th 2018):
 
@@ -25,6 +31,7 @@ Status (May 10th 2018):
 Contributors:
 - Bryan Hilbert
 - Sarah Kendrew
+- Jonathan Aguilar
 
 Comments and contriutions welcome. Please use Issues and Pull requests.
 
