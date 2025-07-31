@@ -1,3 +1,7 @@
 jwst_ta/__pycache__
 *pyc
 
+__pycache__/
+*pyc
+/build/
+/jwst_ta.egg-info/
