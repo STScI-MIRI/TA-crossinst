@@ -629,9 +629,8 @@ def fixbadpix(data, maxstampwidth=3, method='median', silent=False):
 
         # If the adjacent pixels are all NaN, expand to include corners
         else:
-            for i in [half-1, half+1, half+1, half-1]:
-                neighborsx.append(i)
-                neighborsy.append(i)
+            neighborsx.extend([half-1, half+1, half+1, half-1])
+            neighborsy.extend([half+1, half+1, half-1, half-1])
             if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < 8:
                 data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
                 if not silent:
