@@ -658,7 +658,7 @@ def fixbadpix(data, maxstampwidth=3, method='median', silent=False):
             newy = np.repeat(half + delta, len(newx))
             neighborsx.extend(newx)
             neighborsy.extend(newy)
-            if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < (len(neighbosrsx)):
+            if np.sum(np.isnan(substamp[neighborsx, neighborsy])) < (len(neighborsx)):
                 data[bady, badx] = mmethod(substamp[neighborsx, neighborsy])
                 if not silent:
                     print("Expanding to {} rows".format(delta))
