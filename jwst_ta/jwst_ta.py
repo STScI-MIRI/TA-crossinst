@@ -78,8 +78,8 @@ def fine_centroid(data, cwin, xc, yc):
     rwin = np.floor(cwin/2.)
     
     # remember to add 1 so we get all cwin pixels
-    x = (np.round(xc) - np.floor(cwin/2.)) + np.arange(cwin)
-    y = (np.round(yc) - np.floor(cwin/2.)) + np.arange(cwin) 
+    x = (np.floor(xc) - np.floor(cwin/2.)) + np.arange(cwin)
+    y = (np.floor(yc) - np.floor(cwin/2.)) + np.arange(cwin) 
     
  
     
@@ -137,8 +137,8 @@ def bgrsub(data, val, size, coord, silent=False):
             subdata = data
 
         else:
-            subdata = data[np.round(coord[1]-(size/2.)).astype(int):np.round(coord[1]+(size/2.)).astype(int),
-                        np.round(coord[0]-(size/2.)).astype(int):np.round(coord[0]+(size/2.)).astype(int)]
+            subdata = data[np.floor(coord[1]-(size/2.)).astype(int):np.floor(coord[1]+(size/2.)).astype(int),
+                           np.floor(coord[0]-(size/2.)).astype(int):np.floor(coord[0]+(size/2.)).astype(int)]
             
         bgrval = np.percentile(subdata, val*100.)
         
@@ -246,13 +246,13 @@ def centroid_from_image(
             yoffset = 0
             #xc, yc = checkbox(im, cbox, bgcorr)
         else:
-            roi_im = im[np.round(yin-(roi/2.)).astype(int):np.round(yin+(roi/2.)).astype(int),
-                        np.round(xin-(roi/2.)).astype(int):np.round(xin+(roi/2.)).astype(int)]
+            roi_im = im[np.floor(yin-(roi/2.)).astype(int):np.floor(yin+(roi/2.)).astype(int),
+                        np.floor(xin-(roi/2.)).astype(int):np.floor(xin+(roi/2.)).astype(int)]
             
             
             #print("ROI size is {0}".format(np.shape(roi_im)))
-            xoffset = np.round(xin-(roi/2.)).astype(int)
-            yoffset = np.round(yin-(roi/2.)).astype(int)
+            xoffset = np.floor(xin-(roi/2.)).astype(int)
+            yoffset = np.floor(yin-(roi/2.)).astype(int)
     else:
         #xc, yc = checkbox(im, cbox, bgcorr)
         roi_im = im
