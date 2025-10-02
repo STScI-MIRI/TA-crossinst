@@ -1,6 +1,8 @@
 #! /usr/bin/env python
 
 import os
+import sys
+import pdb
 from copy import copy
 from typing import Concatenate
 import numpy as np
@@ -288,8 +290,8 @@ def centroid_from_image(
 def load_im_from_file(
         infile : str = None,
         input_type : str = 'image',
-        ext : int = 0,
-        silent : bool = True,
+        ext : str = 'SCI',
+        silent : bool = False,
 ) -> np.ndarray :
     """
     Prepare an image, loaded from the given file name, for analysis with the TA algorithm.
@@ -301,7 +303,7 @@ def load_im_from_file(
                     then make_ta_image functin is run. If 'image' (default)
                     centroiding is performed directly on the data in the
                     input file
-    - ext:          extension number of the FITS file containing the science data (default = 0)
+    - ext:          extension of the FITS file containing the science data (default = 'SCI')
 
     Output
     ------
@@ -312,7 +314,8 @@ def load_im_from_file(
     if input_type.lower() == 'image':
         hdu = fits.open(infile)
         im = hdu[ext].data
-        h = hdu[ext].header
+        # let's always assume the header info is in the primary header, not the SCI extension. but this will warrant some extra checks. 
+        h = hdu[0].header
     elif input_type.lower() == 'ramp':
         im = make_ta_image(infile, ext=ext, useframes=3, save=False, silent=silent)
         # Save TA image for code testing
@@ -328,7 +331,7 @@ def load_im_from_file(
 def centroid(
         infile : str,
         input_type : str ='image',
-        ext : int = 0,
+        ext : int | str = 'SCI',
         cbox : int = 5,
         cwin : int = 5,
         incoord : tuple[float, float] = (0., 0.),
@@ -373,7 +376,7 @@ def centroid(
     
 #=====================================================
 
-def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
+def make_ta_image(infile, ext='SCI', useframes=3, save=False, silent=False):
     """
     Create the image on which to perform the centroiding
     given a fits file containing an exposure with 
@@ -386,8 +389,8 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     infile -- Name of FITS file containing exposure. Must be
               an exposure containing at least one integration
               and the integration must have an odd number of groups
-    ext -- Extension number containing the data.
-           (Change to use 'SCI' rather than number?)
+              NOTE: for MIRI the integration must have an even number of groups, as we drop the last group.
+    ext -- Extension number containing the data. Default is 'SCI', integer also accepted.
     useframes -- Number of frames to use for the calculation, provided as an integer or a list of integers.
                  Most of the time 3 frames are used, these 
                  being the 1st, (N+1)/2, and Nth groups
@@ -409,9 +412,14 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     with fits.open(infile) as h:
         data = h[ext].data
         head = h[0].header
+    
+    #pdb.set_trace()
     data = data * 1.
         
     shape = data.shape
+
+    # check instrument
+    inst = head['INSTRUME']
     
     if len(shape) <= 2:
         raise RuntimeError(("Warning: Input target acq exposure must "
@@ -433,11 +441,17 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     ngroups = shape[-3]
     
     # don't report an error if data has an even number of groups, but do print a warning.
-    if ngroups % 2 == 0:
-        #raise RuntimeError(("Warning: Input target acq exposure "
-        #                    "must have an odd number of groups!"))
-        if not silent:
-            print('Warning: Input data has an even number of groups')
+    # if the instrument in MIRI, the warning is reversed as MIRI requires an even number. 
+    if inst == 'MIRI':
+        if ngroups % 2 != 0:
+            if not silent:
+                print('Warning: Input data has an odd number of groups. MIRI TA requires an even number.')
+    else:
+        if ngroups % 2 == 0:
+            #raise RuntimeError(("Warning: Input target acq exposure "
+            #                    "must have an odd number of groups!"))
+            if not silent:
+                print('Warning: Input data has an even number of groups. {0} TA requires an odd number.'.format(inst))
 
     # First check whether an integer or a list were provided
     # Group numbers to use. Adjust the values to account for
@@ -445,9 +459,15 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
     
     if type(useframes) is int:
         if useframes == 3:
-            frames = [0, int((ngroups-1)/2), ngroups-1]
+            # for MIRI we drop the last group
+            if inst == 'MIRI':
+                last_group = ngroups-2
+            else:
+                last_group = ngroups-1
+            frames = [0, int((ngroups-1)/2), last_group]
             scale = (frames[1] - frames[0]) / (frames[2] - frames[1])
             if not silent:
+                print('Instrument is {0}'.format(inst))
                 print('Data has {0} groups'.format(ngroups))
                 print('Using {0} for differencing'.format([frame+1 for frame in frames]))
                 print('Scale = {0}'.format(scale))
@@ -455,7 +475,7 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
             diff32 = scale * (data[frames[2], :, :] - data[frames[1], :, :])
             ta_img = np.minimum(diff21, diff32)
         elif useframes == 5:
-            something_else
+            print('Something else happens')
 
     elif type(useframes) is list:
         assert all(type(n) is int for n in useframes), "When passing a list to useframes, all entries must be integers."
@@ -464,6 +484,8 @@ def make_ta_image(infile, ext=0, useframes=3, save=False, silent=False):
         # once asserted we have a list of 3 or 5 integers, sort and check that the numbers make sense.
         useframes.sort()
         assert useframes[-1] <= ngroups, "Highest group number exceeds the number of groups in the integration."
+        if (inst == 'MIRI') & (useframes[-1] == ngroups-1):
+            print('Warning! Useframes list contains the last group. For MIRI, the last group is excluded on board.')
 
         # adjust the values to account for python being 0-indexed
         frames = [n-1 for n in useframes]
