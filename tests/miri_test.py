@@ -21,13 +21,14 @@ cdir= os.getcwd()
 #files = glob.glob('*.fits')
 files = [f]
 
+tarefx = 412.5
+tarefy = 288.5
+
 for file in files:
     print(file)
     # h = fits.getheader(file)
     # these coordinates were obtained with DS9
-    xin = 414.
-    yin = 285.
-    x,y = jwst_ta.centroid(infile=file, input_type='ramp', cbox=5, incoord=(xin, yin), roi=48, bgcorr=0.3, thresh=0.5)
+    x,y = jwst_ta.centroid(infile=file, input_type='ramp', cbox=5, incoord=(tarefx, tarefy), roi=48, bgcorr=0.3, thresh=0.5)
     
    
 

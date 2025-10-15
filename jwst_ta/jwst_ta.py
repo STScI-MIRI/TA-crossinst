@@ -8,6 +8,7 @@ from typing import Concatenate
 import numpy as np
 import astropy.io.fits as fits
 import astropy.io.ascii as ascii
+from astropy.nddata import Cutout2D
 import matplotlib.pyplot as plt
 
 def rclip(x, xmin, xmax):
@@ -248,11 +249,15 @@ def centroid_from_image(
             yoffset = 0
             #xc, yc = checkbox(im, cbox, bgcorr)
         else:
-            roi_im = im[np.floor(yin-(roi/2.)).astype(int):np.floor(yin+(roi/2.)).astype(int),
-                        np.floor(xin-(roi/2.)).astype(int):np.floor(xin+(roi/2.)).astype(int)]
+            #roi_im = im[np.floor(yin-(roi/2.)).astype(int):np.floor(yin+(roi/2.)).astype(int),
+            #            np.floor(xin-(roi/2.)).astype(int):np.floor(xin+(roi/2.)).astype(int)]
             
-            
-            #print("ROI size is {0}".format(np.shape(roi_im)))
+
+            roi_im = Cutout2D(im, (xin, yin), size=roi, mode='strict')
+
+            if not silent:
+                print("ROI size is {0}".format(np.shape(roi_im)))
+                print("corner coordinates are: {0}, {1}, {2}, {3}".format(roi_im.xmin_original, roi_im.ymin_original, roi_im.xmax_original, roi_im.ymax_original))
             xoffset = np.floor(xin-(roi/2.)).astype(int)
             yoffset = np.floor(yin-(roi/2.)).astype(int)
     else:
@@ -263,7 +268,7 @@ def centroid_from_image(
     
     # Perform coarse centroiding. Pay attention to coordinate
     # offsets
-    xc, yc = checkbox(roi_im, cbox)
+    xc, yc = checkbox(roi_im.data, cbox)
     xc += xoffset
     yc += yoffset
     if not silent:
