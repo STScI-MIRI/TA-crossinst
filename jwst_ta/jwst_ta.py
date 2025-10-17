@@ -104,6 +104,9 @@ def fine_centroid(data, cwin, xc, yc):
     #plt.show()
     # end test plot
     
+    xc_old = xc
+    yc_old = yc
+    
     xc = sumx/sump
     yc = sumy/sump
     
