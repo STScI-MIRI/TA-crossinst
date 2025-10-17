@@ -192,7 +192,7 @@ def centroid_from_image(
 
     Output
     ------
-    TA image, centroid
+    Define your output
 
     """
     # Do background correction first
@@ -287,7 +287,7 @@ def centroid_from_image(
         yc = yf
     
 
-    return roi_im, (xf, yf)
+    return xf, yf
 
 def load_im_from_file(
         infile : str = None,
@@ -343,7 +343,6 @@ def centroid(
         flatext : int = 0,
         out : str | None = None,
         thresh : float = 0.05,
-        save : bool = False,
         silent : bool = False
 ) -> tuple[float, float]:
     
@@ -371,20 +370,10 @@ def centroid(
     - out:          enter a filename for output of the fit results to a file (default = None)
     - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength
                        data or low SNR data to prevent.
-    - save:         set to True if you want to save the final TA image
     - silent:       set to True if you want to suppress verbose output
     '''
     im = load_im_from_file(infile, input_type, ext)
-    final_im, centroid = centroid_from_image(im, cbox, cwin, incoord, roi, bgcorr, flat, flatext, out, thresh, silent)
-
-    # save final TA image (background subtracted, flat fielded and ROI cutout), if requested
-    if save:
-        h0 = fits.PrimaryHDU(final_im.data)
-        hl = fits.HDUList([h0])
-        indir, inf = os.path.split(infile)
-        tafile = os.path.join(indir, 'TA_fin_img_'+inf)
-        hl.writeto(tafile, overwrite=True)
-        
+    centroid = centroid_from_image(im, cbox, cwin, incoord, roi, bgcorr, flat, flatext, out, thresh, silent)
     return centroid
     
 #=====================================================
