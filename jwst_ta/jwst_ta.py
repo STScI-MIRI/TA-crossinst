@@ -137,10 +137,11 @@ def bgrsub(data, val, size, coord, silent=False):
             subdata = data
 
         else:
-            subdata = data[np.floor(coord[1]-(size/2.)).astype(int):np.floor(coord[1]+(size/2.)).astype(int),
-                           np.floor(coord[0]-(size/2.)).astype(int):np.floor(coord[0]+(size/2.)).astype(int)]
+            subdata = Cutout2D(data, (coord[0], coord[1]), size=size, mode='strict')
+            #subdata = data[np.floor(coord[1]-(size/2.)).astype(int):np.floor(coord[1]+(size/2.)).astype(int),
+            #               np.floor(coord[0]-(size/2.)).astype(int):np.floor(coord[0]+(size/2.)).astype(int)]
             
-        bgrval = np.percentile(subdata, val*100.)
+        bgrval = np.percentile(subdata.data, val*100.)
         
         # Subtract background level from the FULL image
         outdata = data - bgrval
