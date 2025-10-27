@@ -164,6 +164,7 @@ def centroid_from_image(
         bgcorr : float  = -1,
         flat : str | None = None,
         flatext : int  = 0,
+        flattype : str = "regular",
         out : str  | None = None,
         thresh : float = 0.05,
         silent : bool = False,
@@ -185,6 +186,8 @@ def centroid_from_image(
                         * 0 < bgcorr < 1 for fractional background subtraction
                         * bgcorr > 1 for constant background subtraction number (this number will be subtracted from the entire image)
     - flat:         enter a filename if you have a flat-fielding image to perform flat-fielding
+    - flatext:      the extension in the flatfielding file that has the image
+    - flattype:     type of the flat field ("regular" or "onboard")
     - out:          enter a filename for output of the fit results to a file (default = None) (not actually used)
     - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength
                        data or low SNR data to prevent.
@@ -217,7 +220,7 @@ def centroid_from_image(
                                 "not match data shape ({})!"
                                 .format(ffshape,dshape)))
         # Apply flat
-        im = apply_flat_field(im, flatfield, silent=silent)
+        im = apply_flat_field(im, flatfield, flattype, silent=silent)
         
     ndim = np.ndim(im)
     
@@ -340,6 +343,7 @@ def centroid(
         bgcorr : float = -1,
         flat : str | None = None,
         flatext : int = 0,
+        flattype : str = "regular",
         out : str | None = None,
         thresh : float = 0.05,
         save : bool = False,
@@ -367,6 +371,7 @@ def centroid(
                         * bgcorr > 1 for constant background subtraction number (this number will be subtracted from the entire image)
     - flat:         enter a filename containing a flatfielding image
     - flatext:      the extension in the flatfielding file that has the image
+    - flattype:     type of the flat field ("regular" or "onboard")
     - out:          enter a filename for output of the fit results to a file (default = None)
     - thresh:       the fit threshold, in pixels. default is 0.1 px. consider setting this to a higher number for testing, long-wavelength
                        data or low SNR data to prevent.
@@ -374,7 +379,7 @@ def centroid(
     - silent:       set to True if you want to suppress verbose output
     '''
     im = load_im_from_file(infile, input_type, ext)
-    final_im, centroid = centroid_from_image(im, cbox, cwin, incoord, roi, bgcorr, flat, flatext, out, thresh, silent)
+    final_im, centroid = centroid_from_image(im, cbox, cwin, incoord, roi, bgcorr, flat, flatext, flattype, out, thresh, silent)
     
     # save final TA image (background subtracted, flat fielded and ROI cutout), if requested
     if save:
@@ -528,41 +533,47 @@ def make_ta_image(infile, ext='SCI', useframes=3, save=False, silent=False):
 
 
 #=====================================================
-def apply_flat_field(image, flat, silent=False):
+def apply_flat_field(image, flat, flattype, silent=False):
     """
-    Apply flat field to TA image. Assume the flat 
-    has the format matching those to be used on 
-    board by GENTALOCATE. Pixel values are multiplied
-    by 1000 relative to traditional flat field files.
-    (i.e. flat is normalized to a value of 1000).
-    Bad pixels have a value of 65535. Bad pixels
-    receive a value that is interpolated from 
-    nearest neighbors.
+    Apply flat field to TA image.
+    The flat field can have one of two formats (flattype):
+    1) "regular": pixel values around 1 and bad pixels are nans,
+    2) "onboard": matching the flat used on board by GENTALOCATE, pixel values are inverted, multiplied by 1000, and bad pixels have a value of 65535.
+    Bad pixels are replaced by a value that is interpolated from nearest neighbors.
 
     Parameters:
     -----------
-    image -- TA image. 2D ndarray
-    flat -- Flat field image. 2D ndarray.
-    
+    image: TA image. 2D ndarray
+    flat: Flat field image. 2D ndarray.
+    flattype: type of the flat field ("regular" or "onboard")
+
     Returns:
     --------
     Flat fielded image -- 2D ndarray
     """
-    # Make sure flat field values are floats
-    flat = flat * 1.
+    if flattype=="regular":
+        # Make sure flat field values are floats
+        flat = flat * 1.
+        print("Found {} bad pixels in the flat.".format(np.sum(np.isnan(flat))))
+        # Apply flat
+        image /= (flat)
+        
+    elif flattype=="onboard":    
+        # Find bad pixels and set to NaN
+        bad = flat == 65535
+        print("Found {} bad pixels in the flat.".format(np.sum(bad)))
+        flat[bad] = np.nan
+        # Apply flat
+        image *= (flat/1000.)
     
-    # Find bad pixels and set to NaN
-    bad = flat == 65535
-    print("Found {} bad pixels in the flat.".format(np.sum(bad)))
-    flat[bad] = np.nan
-    
-    # Apply flat
-    image /= (flat/1000.)
-
+    else:
+        print("Invalid flat field type. Must be either 'regular' or 'onboard'. No flat field will be applied.")
+        image = image
+        
     # Use surrounding pixels to set bad pixel values
     # NOT SURE IF THIS IS IMPLEMENTED IN THE REAL
     # GENTALOCATE OR NOT...
-    if np.any(bad):
+    if np.any(np.isnan(image)):
         image = fixbadpix(image, silent=silent)
 
     return image
