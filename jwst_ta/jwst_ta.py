@@ -551,9 +551,10 @@ def apply_flat_field(image, flat, flattype, silent=False):
     --------
     Flat fielded image -- 2D ndarray
     """
+    # Make sure flat field values are floats
+    flat = flat * 1.
     if flattype=="regular":
-        # Make sure flat field values are floats
-        flat = flat * 1.
+        # Find bad pixels
         print("Found {} bad pixels in the flat.".format(np.sum(np.isnan(flat))))
         # Apply flat
         image /= (flat)
